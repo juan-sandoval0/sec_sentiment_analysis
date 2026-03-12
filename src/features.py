@@ -31,7 +31,9 @@ FEATURES_DIR = os.path.join(DATA_DIR, "features")
 
 os.makedirs(FEATURES_DIR, exist_ok=True)
 
-TRAIN_YEARS    = list(range(2010, 2018))
+TRAIN_YEARS    = list(range(2013, 2018))   # 2013–2017  (matches data_pipeline.py)
+VAL_YEARS      = list(range(2018, 2020))   # 2018–2019
+TEST_YEARS     = list(range(2020, 2024))   # 2020–2023  (held-out)
 FINBERT_MODEL  = "yiyanghkust/finbert-pretrain"
 MAX_TOKENS     = 512       # FinBERT hard limit
 
@@ -40,34 +42,43 @@ MAX_TOKENS     = 512       # FinBERT hard limit
 
 def load_raw():
     """
-    Merge filings, targets, and financials; split by year into train / val.
-    Returns (df_train, df_val).
+    Merge filings, targets, and financials; split by year into train / val / test.
+    Returns (df_train, df_val, df_test).
+    vol_threshold (computed on train) is preserved so callers can verify test labels.
     """
     df_filings    = pd.read_csv(os.path.join(RAW_DIR, "filings.csv"))
     df_targets    = pd.read_csv(os.path.join(RAW_DIR, "targets.csv"))
     df_financials = pd.read_csv(os.path.join(RAW_DIR, "financials.csv"))
 
     df = (df_filings
-          .merge(df_targets[["ticker", "year", "volatility", "high_volatility"]],
+          .merge(df_targets[["ticker", "year", "volatility",
+                              "high_volatility", "vol_threshold"]],
                  on=["ticker", "year"])
           .merge(df_financials, on=["ticker", "year"]))
 
     train_mask = df["year"].isin(TRAIN_YEARS)
-    return df[train_mask].reset_index(drop=True), df[~train_mask].reset_index(drop=True)
+    val_mask   = df["year"].isin(VAL_YEARS)
+    test_mask  = df["year"].isin(TEST_YEARS)
+
+    return (df[train_mask].reset_index(drop=True),
+            df[val_mask].reset_index(drop=True),
+            df[test_mask].reset_index(drop=True))
 
 
 # ── Feature Set 1: Financial ratios ───────────────────────────────────────────
 
-def build_financial_features(df_train: pd.DataFrame, df_val: pd.DataFrame):
+def build_financial_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
+                              df_test: pd.DataFrame):
     """
     Standardize the four financial ratio columns.
     Missing values are imputed with per-column training medians before scaling.
-    Returns (X_train, X_val, fitted_scaler).
+    Returns (X_train, X_val, X_test, fitted_scaler).
     """
     cols = ["debt_equity", "roa", "current_ratio", "log_mktcap"]
 
     X_train = df_train[cols].values.astype(float)
     X_val   = df_val[cols].values.astype(float)
+    X_test  = df_test[cols].values.astype(float) if len(df_test) > 0 else np.zeros((0, len(cols)))
 
     # Median imputation (fit on train); fall back to 0 if entire column is NaN
     medians = np.nanmedian(X_train, axis=0)
@@ -75,12 +86,15 @@ def build_financial_features(df_train: pd.DataFrame, df_val: pd.DataFrame):
     for i in range(X_train.shape[1]):
         X_train[np.isnan(X_train[:, i]), i] = medians[i]
         X_val[np.isnan(X_val[:, i]), i]     = medians[i]
+        if len(X_test) > 0:
+            X_test[np.isnan(X_test[:, i]), i] = medians[i]
 
     scaler  = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_val   = scaler.transform(X_val)
+    X_test  = scaler.transform(X_test) if len(X_test) > 0 else X_test
 
-    return X_train, X_val, scaler
+    return X_train, X_val, X_test, scaler
 
 
 # ── Feature Set 2: Sentiment (Loughran-McDonald) — implemented from scratch ───
@@ -149,38 +163,44 @@ def extract_sentiment_features(text: str, wordlists: dict) -> list:
     return features
 
 
-def build_sentiment_features(df_train: pd.DataFrame, df_val: pd.DataFrame):
+def build_sentiment_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
+                              df_test: pd.DataFrame):
     """
     Extract 8 sentiment features per document from scratch using LM word lists.
-    Returns (X_train, X_val, fitted_scaler).
+    Returns (X_train, X_val, X_test, fitted_scaler).
     """
     wordlists = load_lm_wordlists()
 
-    def _batch(df):
+    def _batch(df, label=""):
+        if len(df) == 0:
+            return np.zeros((0, 8))
         return np.array([
             extract_sentiment_features(row["item1a_text"], wordlists)
             for _, row in tqdm(df.iterrows(), total=len(df),
-                               desc="  Sentiment", leave=False)
+                               desc=f"  Sentiment ({label})", leave=False)
         ])
 
-    X_train = _batch(df_train)
-    X_val   = _batch(df_val)
+    X_train = _batch(df_train, "train")
+    X_val   = _batch(df_val,   "val")
+    X_test  = _batch(df_test,  "test")
 
     scaler  = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_val   = scaler.transform(X_val)
+    X_test  = scaler.transform(X_test) if len(X_test) > 0 else X_test
 
-    return X_train, X_val, scaler
+    return X_train, X_val, X_test, scaler
 
 
 # ── Feature Set 3: TF-IDF ─────────────────────────────────────────────────────
 
 def build_tfidf_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
+                         df_test: pd.DataFrame,
                          max_features: int = 500):
     """
     TF-IDF over unigrams.  Vectorizer is fit on the training corpus only.
     sublinear_tf=True applies log(1+tf) to dampen frequency effects.
-    Returns (X_train, X_val, fitted_vectorizer).
+    Returns (X_train, X_val, X_test, fitted_vectorizer).
     """
     vectorizer = TfidfVectorizer(
         max_features=max_features,
@@ -190,8 +210,10 @@ def build_tfidf_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
     )
     X_train = vectorizer.fit_transform(df_train["item1a_text"]).toarray()
     X_val   = vectorizer.transform(df_val["item1a_text"]).toarray()
+    X_test  = (vectorizer.transform(df_test["item1a_text"]).toarray()
+               if len(df_test) > 0 else np.zeros((0, max_features)))
 
-    return X_train, X_val, vectorizer
+    return X_train, X_val, X_test, vectorizer
 
 
 # ── Feature Set 4: FinBERT embeddings ─────────────────────────────────────────
@@ -232,50 +254,69 @@ def _embed_single(text: str, tokenizer, model, device) -> np.ndarray:
 
 
 def build_finbert_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
+                            df_test: pd.DataFrame,
                             cache_dir: str = FEATURES_DIR):
     """
     Compute FinBERT embeddings with chunk-based mean pooling.
-    Results are cached to disk so this only runs once.
-    Returns (X_train_scaled, X_val_scaled).
+    Results are cached per split — only missing splits are recomputed.
+    Returns (X_train_scaled, X_val_scaled, X_test_scaled).
     """
-    cache_tr  = os.path.join(cache_dir, "X_finbert_train.npy")
-    cache_val = os.path.join(cache_dir, "X_finbert_val.npy")
+    cache_tr   = os.path.join(cache_dir, "X_finbert_train.npy")
+    cache_val  = os.path.join(cache_dir, "X_finbert_val.npy")
+    cache_test = os.path.join(cache_dir, "X_finbert_test.npy")
 
-    if os.path.exists(cache_tr) and os.path.exists(cache_val):
-        print("  Loading FinBERT embeddings from cache...")
-        X_train = np.load(cache_tr)
-        X_val   = np.load(cache_val)
-    else:
+    need_model = (not os.path.exists(cache_tr) or
+                  not os.path.exists(cache_val) or
+                  (len(df_test) > 0 and not os.path.exists(cache_test)))
+
+    tokenizer = model_fb = None
+    if need_model:
         device = (
             torch.device("cuda") if torch.cuda.is_available()
             else torch.device("mps") if torch.backends.mps.is_available()
             else torch.device("cpu")
         )
-        print(f"  Computing FinBERT embeddings on {device}  (cached after first run)...")
-
+        print(f"  Computing missing FinBERT embeddings on {device}...")
         tokenizer = AutoTokenizer.from_pretrained(FINBERT_MODEL)
-        model     = AutoModel.from_pretrained(FINBERT_MODEL).to(device).eval()
+        model_fb  = AutoModel.from_pretrained(FINBERT_MODEL).to(device).eval()
+    else:
+        print("  Loading FinBERT embeddings from cache...")
 
-        def _embed_batch(df):
-            return np.array([
-                _embed_single(row["item1a_text"], tokenizer, model, device)
-                for _, row in tqdm(df.iterrows(), total=len(df),
-                                   desc="  FinBERT", leave=False)
-            ])
+    def _embed_batch(df, label):
+        return np.array([
+            _embed_single(row["item1a_text"], tokenizer, model_fb, device)
+            for _, row in tqdm(df.iterrows(), total=len(df),
+                               desc=f"  FinBERT ({label})", leave=False)
+        ])
 
-        X_train = _embed_batch(df_train)
-        X_val   = _embed_batch(df_val)
+    if os.path.exists(cache_tr):
+        X_train = np.load(cache_tr)
+    else:
+        X_train = _embed_batch(df_train, "train")
+        np.save(cache_tr, X_train)
 
-        np.save(cache_tr,  X_train)
+    if os.path.exists(cache_val):
+        X_val = np.load(cache_val)
+    else:
+        X_val = _embed_batch(df_val, "val")
         np.save(cache_val, X_val)
+
+    if len(df_test) == 0:
+        X_test = np.zeros((0, 768))
+    elif os.path.exists(cache_test):
+        X_test = np.load(cache_test)
+    else:
+        X_test = _embed_batch(df_test, "test")
+        np.save(cache_test, X_test)
         print(f"  Cached to {cache_dir}")
 
     # Normalize (fit scaler on train only)
     scaler  = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_val   = scaler.transform(X_val)
+    X_test  = scaler.transform(X_test) if len(X_test) > 0 else X_test
 
-    return X_train, X_val
+    return X_train, X_val, X_test
 
 
 # ── Build all feature sets ─────────────────────────────────────────────────────
@@ -284,50 +325,62 @@ def build_all_features():
     """
     Orchestrates all feature engineering.
     Returns:
-        feature_sets : dict  {name: (X_train, X_val)}
-        targets      : dict  {task: (y_train, y_val)}
-        df_train, df_val
+        feature_sets : dict  {name: (X_train, X_val, X_test)}
+        targets      : dict  {task: (y_train, y_val, y_test)}
+        df_train, df_val, df_test
+
+    If 2020-2023 data has not been fetched yet, df_test will be empty and
+    all X_test matrices will have shape (0, p). Test evaluation cells in the
+    notebook guard against this case.
     """
     print("Loading raw data...")
-    df_train, df_val = load_raw()
-    print(f"  Train: {len(df_train)} | Val: {len(df_val)}\n")
+    df_train, df_val, df_test = load_raw()
+    print(f"  Train: {len(df_train)} | Val: {len(df_val)} | Test: {len(df_test)}\n")
 
     print("Building X_financial...")
-    X_fin_tr, X_fin_val, _   = build_financial_features(df_train, df_val)
+    X_fin_tr, X_fin_val, X_fin_te, _     = build_financial_features(df_train, df_val, df_test)
 
     print("Building X_sentiment...")
-    X_sent_tr, X_sent_val, _ = build_sentiment_features(df_train, df_val)
+    X_sent_tr, X_sent_val, X_sent_te, _  = build_sentiment_features(df_train, df_val, df_test)
 
     print("Building X_tfidf...")
-    X_tfidf_tr, X_tfidf_val, _ = build_tfidf_features(df_train, df_val)
+    X_tfidf_tr, X_tfidf_val, X_tfidf_te, _ = build_tfidf_features(df_train, df_val, df_test)
 
     print("Building X_finbert...")
-    X_fb_tr, X_fb_val = build_finbert_features(df_train, df_val)
+    X_fb_tr, X_fb_val, X_fb_te = build_finbert_features(df_train, df_val, df_test)
 
     # Combined: stack all feature sets
     X_all_tr  = np.hstack([X_fin_tr,  X_sent_tr,  X_tfidf_tr,  X_fb_tr])
     X_all_val = np.hstack([X_fin_val, X_sent_val, X_tfidf_val, X_fb_val])
+    X_all_te  = (np.hstack([X_fin_te, X_sent_te, X_tfidf_te, X_fb_te])
+                 if len(df_test) > 0 else np.zeros((0, X_all_tr.shape[1])))
 
     feature_sets = {
-        "financial": (X_fin_tr,   X_fin_val),
-        "sentiment": (X_sent_tr,  X_sent_val),
-        "tfidf":     (X_tfidf_tr, X_tfidf_val),
-        "finbert":   (X_fb_tr,    X_fb_val),
-        "all":       (X_all_tr,   X_all_val),
+        "financial": (X_fin_tr,   X_fin_val,   X_fin_te),
+        "sentiment": (X_sent_tr,  X_sent_val,  X_sent_te),
+        "tfidf":     (X_tfidf_tr, X_tfidf_val, X_tfidf_te),
+        "finbert":   (X_fb_tr,    X_fb_val,    X_fb_te),
+        "all":       (X_all_tr,   X_all_val,   X_all_te),
     }
 
     targets = {
-        "regression":     (df_train["volatility"].values.astype(float),
-                           df_val["volatility"].values.astype(float)),
-        "classification": (df_train["high_volatility"].values.astype(int),
-                           df_val["high_volatility"].values.astype(int)),
+        "regression": (
+            df_train["volatility"].values.astype(float),
+            df_val["volatility"].values.astype(float),
+            df_test["volatility"].values.astype(float) if len(df_test) > 0 else np.array([]),
+        ),
+        "classification": (
+            df_train["high_volatility"].values.astype(int),
+            df_val["high_volatility"].values.astype(int),
+            df_test["high_volatility"].values.astype(int) if len(df_test) > 0 else np.array([], dtype=int),
+        ),
     }
 
     print("\nFeature shapes (train):")
-    for name, (X_tr, _) in feature_sets.items():
+    for name, (X_tr, _, _) in feature_sets.items():
         print(f"  {name:12s}: {X_tr.shape}")
 
-    return feature_sets, targets, df_train, df_val
+    return feature_sets, targets, df_train, df_val, df_test
 
 
 if __name__ == "__main__":

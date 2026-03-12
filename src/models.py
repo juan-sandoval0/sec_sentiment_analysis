@@ -51,7 +51,12 @@ def classification_metrics(y_true: np.ndarray, y_prob: np.ndarray) -> dict:
 # 1. Ridge Regression  —  manual alpha grid
 # ═══════════════════════════════════════════════════════════════════════════════
 
-RIDGE_ALPHAS = [0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]
+# Alpha range justified by p/n ratios: financial (p=4) and sentiment (p=8) are
+# well-conditioned (p/n << 1), so low alphas [0.1, 1] are appropriate. For
+# tfidf (p=500, p/n≈2.3) and finbert (p=768, p/n≈3.6), X'X is rank-deficient
+# and alpha must compete with n≈216 data points, placing the effective regime
+# at [100, 10000]. Grid spans five decades to cover all feature sets.
+RIDGE_ALPHAS = [0.1, 1.0, 10.0, 100.0, 1000.0, 5000.0, 10000.0]
 
 
 def ridge_grid_search(X_train, y_train, X_val, y_val,
@@ -91,7 +96,12 @@ def ridge_grid_search(X_train, y_train, X_val, y_val,
 # 2. Logistic Regression  —  manual C grid
 # ═══════════════════════════════════════════════════════════════════════════════
 
-LOGREG_CS = [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+# C = 1/lambda where lambda is L2 penalty strength. With n=216 and high-dim
+# feature sets (p up to 1280), strong regularization is needed: best C is
+# expected in [0.001, 0.1] for tfidf/finbert/all. For financial/sentiment
+# (p=4-8, underparameterized), C up to 10-100 is appropriate. Adding C=0.0001
+# provides a strongly regularized baseline to detect the overfitting boundary.
+LOGREG_CS = [0.0001, 0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
 
 
 def logreg_grid_search(X_train, y_train, X_val, y_val,
@@ -136,10 +146,17 @@ def logreg_grid_search(X_train, y_train, X_val, y_val,
 # 3. Random Forest  —  manual 18-combination nested grid
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# n_estimators [100, 200]: tests whether variance reduction has saturated for
+#   n=216; more trees reduce variance at diminishing returns past ~100.
+# max_depth [3, 5, 10]: depth 3 → max 8 leaves (conservative for n=216),
+#   depth 5 → 32 leaves, depth 10 → up to 1024 leaves (likely to overfit).
+# min_samples_leaf [1, 10, 15]: 1=unpruned, 10=n/20 heuristic,
+#   15≈sqrt(216)≈14.7 (classic rule of thumb for stable leaf estimates).
+# Grid: 2 × 3 × 3 = 18 combinations.
 RF_GRID = {
-    "n_estimators":    [100],
-    "max_depth":       [10, None],
-    "min_samples_leaf":[1, 10],
+    "n_estimators":    [100, 200],
+    "max_depth":       [3, 5, 10],
+    "min_samples_leaf":[1, 10, 15],
 }
 
 
@@ -263,11 +280,20 @@ class EarlyStopping:
             model.load_state_dict(self.best_state)
 
 
+# hidden_dims: [64,32] (~2k params) suits financial/sentiment where input is small;
+#   [128,64] (~10k params) suits tfidf; [256,128,64] (~50k params) suits finbert/all.
+#   Original single choice of [256,128,64] had param/sample ratio ≈230 — too large
+#   for n=216 without heavy regularization.
+# dropout [0.2, 0.5]: higher dropout justified for small datasets.
+# lr [3e-4, 1e-3]: standard Adam learning rates; ReduceLROnPlateau handles decay.
+# weight_decay [1e-4, 1e-3, 1e-2]: L2 regularization sweep — with high p/n ratios,
+#   stronger decay (1e-2) is expected to outperform weak decay (1e-4).
+# Grid: 3 × 2 × 2 × 3 = 36 combinations.
 MLP_GRID = {
-    "hidden_dims":  [[256, 128, 64]],
+    "hidden_dims":  [[64, 32], [128, 64], [256, 128, 64]],
     "dropout":      [0.2, 0.5],
     "lr":           [3e-4, 1e-3],
-    "weight_decay": [1e-4],
+    "weight_decay": [1e-4, 1e-3, 1e-2],
 }
 
 

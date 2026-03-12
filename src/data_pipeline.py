@@ -35,9 +35,10 @@ DATA_DIR   = os.path.join(BASE_DIR, "Data")
 RAW_DIR    = os.path.join(DATA_DIR, "raw")
 TICKERS_PATH = os.path.join(DATA_DIR, "sp500_tickers.csv")
 
-TRAIN_YEARS = list(range(2013, 2018))   # 2013–2017 (dev subset)
+TRAIN_YEARS = list(range(2013, 2018))   # 2013–2017
 VAL_YEARS   = list(range(2018, 2020))   # 2018–2019
-ALL_YEARS   = TRAIN_YEARS + VAL_YEARS
+TEST_YEARS  = list(range(2020, 2024))   # 2020–2023 (held-out test set)
+ALL_YEARS   = TRAIN_YEARS + VAL_YEARS + TEST_YEARS
 
 N_COMPANIES   = 50
 SEED          = 42
@@ -295,11 +296,15 @@ def run_pipeline():
     df_targets.to_csv(os.path.join(RAW_DIR, "targets.csv"),     index=False)
     df_financials.to_csv(os.path.join(RAW_DIR, "financials.csv"), index=False)
 
+    val_mask  = df_targets["year"].isin(VAL_YEARS)
+    test_mask = df_targets["year"].isin(TEST_YEARS)
     n_train = train_mask.sum()
-    n_val   = (~train_mask).sum()
+    n_val   = val_mask.sum()
+    n_test  = test_mask.sum()
     print(f"\nDone. Collected {len(df_filings)} observations  ({skipped} skipped).")
-    print(f"  Train 2010-2017 : {n_train}")
+    print(f"  Train 2013-2017 : {n_train}")
     print(f"  Val   2018-2019 : {n_val}")
+    print(f"  Test  2020-2023 : {n_test}")
     print(f"  Volatility 75th pct (train) : {threshold:.4f}")
     print(f"  High-volatility rate        : {df_targets['high_volatility'].mean():.1%}")
 
