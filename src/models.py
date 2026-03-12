@@ -310,8 +310,8 @@ def train_mlp(
     model     = MLP(X_train.shape[1], hidden_dims, dropout).to(device)
     criterion = (nn.BCEWithLogitsLoss() if task == "classification"
                  else nn.MSELoss())
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr,
-                                  weight_decay=weight_decay)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr,
+                                 weight_decay=weight_decay)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.5, patience=5, min_lr=1e-6
     )
