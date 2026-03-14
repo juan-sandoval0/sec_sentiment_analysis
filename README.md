@@ -1,4 +1,4 @@
-# SEC Sentiment Analysis — Predicting Stock Volatility from 10-K Filings
+# SEC Sentiment Analysis: Predicting Stock Volatility from 10-K Filings
 
 Claude Code was used to help with data pipelines, results analysis, and structuring code from our ideas. However, model selection and every choice for training was made by the team. We also selected the best models using our best judgement after validation results. Obviously, all analysis from the results themselves in the paper is also done by the team.
 
@@ -6,9 +6,9 @@ Predicts forward realized volatility from SEC 10-K Item 1A (Risk Factors) text u
 
 ## Overview
 
-- **Data:** 304 firm-year observations, 50 S&P 500 companies, 2013–2019
+- **Data:** 304 firm-year observations, 50 S&P 500 companies, 2013-2019
 - **Target:** Annualized realized volatility over 252 trading days following each filing (regression), binarized at the training-set 75th percentile (classification)
-- **Train:** 2013–2017 (216 obs) | **Val:** 2018–2019 (88 obs)
+- **Train:** 2013-2017 (216 obs) | **Val:** 2018-2019 (88 obs)
 
 ## Feature Sets
 
@@ -35,7 +35,7 @@ Predicts forward realized volatility from SEC 10-K Item 1A (Risk Factors) text u
 | LogReg | tfidf | 0.697 | 0.582 |
 | MLP | finbert | 0.694 | 0.681 |
 | RF | tfidf | 0.680 | 0.295 |
-| Any | financial | ~0.50 | — |
+| Any | financial | ~0.50 | N/A |
 
 Financial-only features perform at chance. TF-IDF text features yield a +0.20 AUC gain over the financial baseline. TF-IDF outperforms FinBERT (0.723 vs 0.694), likely due to limited training data.
 
@@ -55,22 +55,22 @@ export EDGAR_IDENTITY="Your Name your@email.com"
 
 Run cells in order in `notebooks/experiments.ipynb`:
 
-1. **Data pipeline** — fetches 10-K text, volatility, and financial ratios (runs once, cached to `Data/raw/`)
-2. **Feature engineering** — builds all feature matrices (FinBERT cached to `Data/features/`)
-3. **Model training** — grid search for Ridge, LogReg, RF, and MLP
-4. **Evaluation** — ROC curves, feature importance, comparison heatmap (saved to `results/figures/`)
+1. **Data pipeline:** fetches 10-K text, volatility, and financial ratios (runs once, cached to `Data/raw/`)
+2. **Feature engineering:** builds all feature matrices (FinBERT cached to `Data/features/`)
+3. **Model training:** grid search for Ridge, LogReg, RF, and MLP
+4. **Evaluation:** ROC curves, feature importance, comparison heatmap (saved to `results/figures/`)
 
 ## Structure
 
 ```
 src/
-  data_pipeline.py   — EDGAR + Yahoo Finance data collection
-  features.py        — all feature engineering
-  models.py          — all model training and grid search
-  evaluate.py        — metrics and figures
+  data_pipeline.py   - EDGAR + Yahoo Finance data collection
+  features.py        - all feature engineering
+  models.py          - all model training and grid search
+  evaluate.py        - metrics and figures
 notebooks/
-  experiments.ipynb  — main run notebook
+  experiments.ipynb  - main run notebook
 results/
-  val_summary.csv    — validation metrics for all model/feature combinations
-  figures/           — all generated plots
+  val_summary.csv    - validation metrics for all model/feature combinations
+  figures/           - all generated plots
 ```
