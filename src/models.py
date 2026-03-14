@@ -2,14 +2,14 @@
 models.py
 
 all four model families with manual hyperparameter sweeps.
-no bare .fit() with defaults — every model gets a proper grid search
+no bare .fit() with defaults, every model gets a proper grid search
 and i track metrics at every combination so i can see what's happening.
 
 models:
-1. Ridge Regression       — manual alpha grid, regression
-2. Logistic Regression    — manual C grid, classification
-3. Random Forest          — 18-combo grid, regression + classification
-4. MLP (PyTorch)          — custom training loop, early stopping, lr scheduling, grid search
+1. Ridge Regression:      manual alpha grid, regression
+2. Logistic Regression:   manual C grid, classification
+3. Random Forest:         18-combo grid, regression + classification
+4. MLP (PyTorch):         custom training loop, early stopping, lr scheduling, grid search
 """
 
 import numpy as np
@@ -46,7 +46,7 @@ def classification_metrics(y_true: np.ndarray, y_prob: np.ndarray) -> dict:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 1. Ridge Regression  —  manual alpha grid
+# 1. Ridge Regression: manual alpha grid
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # for financial (p=4) and sentiment (p=8), p/n is tiny so low alphas work fine.
@@ -88,11 +88,11 @@ def ridge_grid_search(X_train, y_train, X_val, y_val,
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 2. Logistic Regression  —  manual C grid
+# 2. Logistic Regression: manual C grid
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # C = 1/lambda. with n=216 and high-dim features (p up to 1280), strong
-# regularization is needed — expecting best C in [0.001, 0.1] for tfidf/finbert/all.
+# regularization is needed, expecting best C in [0.001, 0.1] for tfidf/finbert/all.
 # for financial/sentiment (p=4-8), C up to 10-100 is reasonable.
 # C=0.0001 is a strongly-regularized baseline to see where overfitting kicks in.
 LOGREG_CS = [0.0001, 0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
@@ -136,7 +136,7 @@ def logreg_grid_search(X_train, y_train, X_val, y_val,
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 3. Random Forest  —  manual 18-combination nested grid
+# 3. Random Forest: manual 18-combination nested grid
 # ═══════════════════════════════════════════════════════════════════════════════
 
 # n_estimators [100, 200]: checking if variance reduction has saturated at n=216
@@ -219,13 +219,13 @@ def rf_grid_search(X_train, y_train, X_val, y_val,
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# 4. Custom PyTorch MLP  —  full manual training loop
+# 4. Custom PyTorch MLP: full manual training loop
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class MLP(nn.Module):
     """
     3-layer MLP with BatchNorm and Dropout.
-    single output logit — sigmoid applied outside for classification,
+    single output logit, sigmoid applied outside for classification,
     raw value for regression.
     """
     def __init__(self, input_dim: int, hidden_dims: list[int], dropout: float):

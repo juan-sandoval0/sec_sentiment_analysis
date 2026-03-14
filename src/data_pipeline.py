@@ -204,7 +204,7 @@ def fetch_financial_ratios(ticker: str, year: int) -> dict:
             if pd.notna(net_income) and pd.notna(total_assets) and total_assets != 0:
                 out["roa"] = float(net_income / total_assets)
 
-        # Log Market Cap — shares * price at start of year, log to squish the scale
+        # Log Market Cap: shares * price at start of year, log to squish the scale
         try:
             hist = yf.Ticker(ticker).history(
                 start=f"{year}-01-01", end=f"{year}-02-15", auto_adjust=True

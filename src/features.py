@@ -2,13 +2,13 @@
 features.py
 
 builds the four feature matrices from the raw CSVs.
-scalers and vectorizers are fit on train only — super important, no leakage.
+scalers and vectorizers are fit on train only, super important, no leakage.
 
 feature sets:
-    X_financial  (4)    — debt/equity, ROA, current ratio, log market cap
-    X_sentiment  (8)    — Loughran-McDonald word ratios + fog index + log word count
-    X_tfidf      (500)  — TF-IDF unigrams, top 500
-    X_finbert    (768)  — mean-pooled FinBERT embeddings, chunked for long docs
+    X_financial  (4):   debt/equity, ROA, current ratio, log market cap
+    X_sentiment  (8):   Loughran-McDonald word ratios + fog index + log word count
+    X_tfidf      (500): TF-IDF unigrams, top 500
+    X_finbert    (768): mean-pooled FinBERT embeddings, chunked for long docs
 """
 
 import os
@@ -78,7 +78,7 @@ def build_financial_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
     X_val   = df_val[cols].values.astype(float)
     X_test  = df_test[cols].values.astype(float) if len(df_test) > 0 else np.zeros((0, len(cols)))
 
-    # impute with train medians — fit on train only!! fall back to 0 if whole column is NaN
+    # impute with train medians, fit on train only!! fall back to 0 if whole column is NaN
     medians = np.nanmedian(X_train, axis=0)
     medians = np.where(np.isnan(medians), 0.0, medians)
     for i in range(X_train.shape[1]):
@@ -95,7 +95,7 @@ def build_financial_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
     return X_train, X_val, X_test, scaler
 
 
-# ── Feature Set 2: Sentiment (Loughran-McDonald) — implemented from scratch ───
+# ── Feature Set 2: Sentiment (Loughran-McDonald), implemented from scratch ───
 
 def load_lm_wordlists(path: str = LM_PATH) -> dict:
     """
@@ -306,7 +306,7 @@ def build_finbert_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
         np.save(cache_test, X_test)
         print(f"  Cached to {cache_dir}")
 
-    # normalize — fit scaler on train only, same rule as everything else
+    # normalize, fit scaler on train only, same rule as everything else
     scaler  = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_val   = scaler.transform(X_val)

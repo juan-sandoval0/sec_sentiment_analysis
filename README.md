@@ -1,5 +1,7 @@
 # SEC Sentiment Analysis — Predicting Stock Volatility from 10-K Filings
 
+Claude Code was used to help with data pipelines, results analysis, and structuring code from our ideas. However, model selection and every choice for training was made by the team. We also selected the best models using our best judgement after validation results. Obviously, all analysis from the results themselves in the paper is also done by the team.
+
 Predicts forward realized volatility from SEC 10-K Item 1A (Risk Factors) text using four feature representations and four model families.
 
 ## Overview
