@@ -1,10 +1,10 @@
 """
 run_test_eval.py
 
-Trains the selected model × feature-set combinations (best hyperparams chosen
-by val AUC), then evaluates on the held-out 2020-2023 test set.
+trains the best model × feature-set combos on train+val,
+then finally evaluates on the held-out 2020-2023 test set.
 
-Models evaluated:
+models:
     logreg × tfidf, logreg × finbert
     rf     × tfidf, rf     × finbert
     mlp    × tfidf, mlp    × finbert
@@ -85,7 +85,7 @@ for model_type, fs_name in MODELS_TO_EVAL:
         "feature_set": fs_name,
         "val_auc":     round(auc_val,  4),
         "test_auc":    round(auc_test, 4),
-        "auc_delta":   round(auc_test - auc_val, 4),
+        "auc_delta":   round(auc_test - auc_val, 4),  # positive = generalization bonus
         "val_f1":      round(f1_val,   4),
         "test_f1":     round(f1_test,  4),
         "test_acc":    round(acc_test, 4),

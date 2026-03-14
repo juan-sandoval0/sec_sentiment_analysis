@@ -1,8 +1,8 @@
 """
 evaluate.py
 
-Metrics and visualization utilities.
-All plots are saved to results/figures/.
+plotting and results table stuff.
+all figures saved to results/figures/
 """
 
 import os
@@ -48,9 +48,8 @@ def plot_regularization_curves(results_df: pd.DataFrame,
                                 title: str,
                                 fname: str):
     """
-    Two-panel plot: train metric (left) and val metric (right) vs. hyperparam,
-    one curve per feature set.
-    Works for both log-scale params (alpha, C) and categorical params.
+    two panels: train metric (left) and val metric (right) vs. hyperparam,
+    one curve per feature set. works for alpha, C, or any categorical param.
     """
     train_col    = metric_col.replace("val_", "train_")
     feature_sets = results_df["feature_set"].unique()
@@ -160,7 +159,7 @@ def plot_model_comparison_heatmap(summary_df: pd.DataFrame,
                                    metric: str = "val_auc",
                                    fname: str = "model_comparison.png"):
     """
-    summary_df must have columns: model, feature_set, <metric>
+    summary_df needs columns: model, feature_set, <metric>
     """
     pivot = summary_df.pivot(index="feature_set", columns="model", values=metric)
     fig, ax = plt.subplots(figsize=(9, 4))
@@ -176,7 +175,7 @@ def plot_model_comparison_heatmap(summary_df: pd.DataFrame,
 def print_results_table(all_results: dict) -> pd.DataFrame:
     """
     all_results: {model_label: {metric_name: value, ...}}
-    Prints a formatted summary table and returns it as a DataFrame.
+    prints a formatted summary table and returns it as a DataFrame
     """
     rows = [{"model": name, **metrics} for name, metrics in all_results.items()]
     df   = pd.DataFrame(rows)

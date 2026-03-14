@@ -1,16 +1,9 @@
 """
 data_pipeline.py
 
-Fetches 10-K Item 1A text + financial data for dev subset (100 companies, 2010-2019).
-Outputs:
-    Data/raw/filings.csv     — ticker, year, filing_date, item1a_text
-    Data/raw/targets.csv     — ticker, year, filing_date, volatility, high_volatility
-    Data/raw/financials.csv  — ticker, year, debt_equity, roa, current_ratio, log_mktcap
-
-Usage:
-    python src/data_pipeline.py
-
-Set EDGAR_IDENTITY env var or edit the constant below before running.
+scrapes Item 1A text from EDGAR 10-Ks and grabs volatility + financial ratios
+from yahoo finance. basically builds the raw dataset needed before anything else.
+outputs three CSVs into Data/raw/
 """
 
 import os
@@ -26,8 +19,7 @@ warnings.filterwarnings("ignore")
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-# SEC EDGAR requires a User-Agent with your name and email.
-# Update this or set the EDGAR_IDENTITY environment variable.
+# SEC requires a user-agent string or requests get blocked
 EDGAR_IDENTITY = os.getenv("EDGAR_IDENTITY", "Juan Sandoval juansd@stanford.edu")
 
 BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -37,12 +29,12 @@ TICKERS_PATH = os.path.join(DATA_DIR, "sp500_tickers.csv")
 
 TRAIN_YEARS = list(range(2013, 2018))   # 2013–2017
 VAL_YEARS   = list(range(2018, 2020))   # 2018–2019
-TEST_YEARS  = list(range(2020, 2024))   # 2020–2023 (held-out test set)
+TEST_YEARS  = list(range(2020, 2024))   # 2020–2023, keeping this locked until final eval
 ALL_YEARS   = TRAIN_YEARS + VAL_YEARS + TEST_YEARS
 
 N_COMPANIES   = 50
 SEED          = 42
-REQUEST_DELAY = 0.6   # seconds between EDGAR requests (be a good citizen)
+REQUEST_DELAY = 0.6   # EDGAR rate-limits if requests come too fast
 
 os.makedirs(RAW_DIR, exist_ok=True)
 
@@ -50,7 +42,7 @@ os.makedirs(RAW_DIR, exist_ok=True)
 # ── Company selection ──────────────────────────────────────────────────────────
 
 def select_companies(n: int = N_COMPANIES, seed: int = SEED) -> pd.DataFrame:
-    """Stratified sample of n companies across GICS sectors."""
+    """pick n companies spread across sectors so the sample isn't all tech"""
     df = pd.read_csv(TICKERS_PATH).dropna(subset=["Symbol", "GICS Sector"])
 
     rng     = np.random.default_rng(seed)
@@ -66,7 +58,7 @@ def select_companies(n: int = N_COMPANIES, seed: int = SEED) -> pd.DataFrame:
 
     result = pd.concat(selected, ignore_index=True)
 
-    # Top-up if rounding left us short
+    # rounding sometimes leaves me a few short, top up to exactly n
     if len(result) < n:
         remaining = df[~df["Symbol"].isin(result["Symbol"])]
         extra_idx = rng.choice(len(remaining), size=n - len(result), replace=False)
@@ -79,21 +71,19 @@ def select_companies(n: int = N_COMPANIES, seed: int = SEED) -> pd.DataFrame:
 
 def fetch_item1a(ticker: str, year: int, cik=None):
     """
-    Fetch Item 1A (Risk Factors) from the 10-K covering fiscal year `year`.
-    Most companies file their FY-Y 10-K in early Y+1, so we search filings
-    with filing_date in [Jul Y, Jun Y+1].
-
-    Returns (text: str, filing_date: pd.Timestamp) or (None, None) on failure.
+    grabs the risk factors section from the 10-K for fiscal year `year`.
+    most companies file their FY-Y 10-K in early Y+1, so i search Jul Y to Jun Y+1.
+    returns (text, filing_date) or (None, None) if anything goes wrong
     """
     try:
         from edgar import Company, set_identity
         set_identity(EDGAR_IDENTITY)
 
-        # Prefer CIK for reliability; fall back to ticker symbol
+        # CIK lookup is more reliable than ticker symbol
         company = Company(int(cik)) if pd.notna(cik) else Company(ticker)
         filings = company.get_filings(form="10-K")
 
-        # Date window: Jul Y  →  Jun Y+1  captures FY-Y regardless of fiscal year end
+        # Jul Y → Jun Y+1 catches FY-Y regardless of fiscal year end date
         window_start = pd.Timestamp(f"{year}-07-01")
         window_end   = pd.Timestamp(f"{year + 1}-06-30")
 
@@ -112,7 +102,7 @@ def fetch_item1a(ticker: str, year: int, cik=None):
         if tenk is None:
             return None, None
 
-        # edgartools v5.x uses .risk_factors for Item 1A text
+        # edgartools changed the attribute name at some point, try a few variations
         item1a_text = None
         for attr in ("risk_factors", "item_1a", "item1a", "Item1A"):
             val = getattr(tenk, attr, None)
@@ -134,12 +124,12 @@ def fetch_item1a(ticker: str, year: int, cik=None):
 
 def compute_volatility(ticker: str, filing_date) -> float | None:
     """
-    Annualized realized volatility = std(log_daily_returns) * sqrt(252)
-    computed over the 252 trading days immediately following `filing_date`.
+    annualized realized vol = std(log daily returns) * sqrt(252)
+    measured over the 252 trading days right after the filing date
     """
     try:
         start = pd.Timestamp(filing_date) + pd.Timedelta(days=1)
-        end   = start + pd.Timedelta(days=420)   # fetch extra buffer
+        end   = start + pd.Timedelta(days=420)   # grab extra buffer, trim to 252 later
 
         hist = yf.Ticker(ticker).history(
             start=start.strftime("%Y-%m-%d"),
@@ -162,8 +152,8 @@ def compute_volatility(ticker: str, filing_date) -> float | None:
 
 def fetch_financial_ratios(ticker: str, year: int) -> dict:
     """
-    Returns debt_equity, roa, current_ratio, log_mktcap for fiscal year `year`
-    sourced from yfinance annual balance sheet / income statement.
+    debt/equity, roa, current ratio, log market cap for fiscal year `year`
+    pulled from yfinance balance sheet / income statement. lots of NaNs, imputed downstream
     """
     out = {"debt_equity": np.nan, "roa": np.nan,
            "current_ratio": np.nan, "log_mktcap": np.nan}
@@ -175,7 +165,7 @@ def fetch_financial_ratios(ticker: str, year: int) -> dict:
         if bs is None or bs.empty:
             return out
 
-        # Find the column whose date is closest to Dec 31 of `year` (max ±18 months)
+        # find the column closest to Dec 31 of target year (within 18 months)
         target = pd.Timestamp(f"{year}-12-31")
 
         def nearest_col(df):
@@ -214,7 +204,7 @@ def fetch_financial_ratios(ticker: str, year: int) -> dict:
             if pd.notna(net_income) and pd.notna(total_assets) and total_assets != 0:
                 out["roa"] = float(net_income / total_assets)
 
-        # Log Market Cap  (shares × price at start of year)
+        # Log Market Cap — shares * price at start of year, log to squish the scale
         try:
             hist = yf.Ticker(ticker).history(
                 start=f"{year}-01-01", end=f"{year}-02-15", auto_adjust=True
@@ -253,13 +243,13 @@ def run_pipeline():
 
     for ticker, year, cik in tqdm(pairs, desc="Fetching filings"):
 
-        # 1. 10-K Item 1A text
+        # 1. grab the risk factors text
         text, filing_date = fetch_item1a(ticker, year, cik)
         if text is None:
             skipped += 1
             continue
 
-        # 2. Realized volatility (required — drop row if unavailable)
+        # 2. need volatility too, skip the whole row if this fails
         vol = compute_volatility(ticker, filing_date)
         if vol is None:
             skipped += 1
@@ -274,11 +264,11 @@ def run_pipeline():
             "filing_date": filing_date, "volatility": vol,
         })
 
-        # 3. Financial ratios (missing values handled downstream)
+        # 3. financial ratios are nice to have but NaNs are fine, imputed later
         ratios = fetch_financial_ratios(ticker, year)
         financials_rows.append({"ticker": ticker, "year": year, **ratios})
 
-    # ── Binary label: threshold computed on TRAIN set only ──
+    # ── compute binary label from TRAIN set only, don't leak val/test info ──
     df_targets = pd.DataFrame(targets_rows)
     if df_targets.empty:
         print("\nERROR: No observations collected. Check EDGAR connectivity and identity.")
@@ -288,7 +278,7 @@ def run_pipeline():
     df_targets["high_volatility"] = (df_targets["volatility"] > threshold).astype(int)
     df_targets["vol_threshold"]   = threshold
 
-    # ── Save ──
+    # ── save everything ──
     df_filings    = pd.DataFrame(filings_rows)
     df_financials = pd.DataFrame(financials_rows)
 

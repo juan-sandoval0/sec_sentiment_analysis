@@ -1,11 +1,8 @@
 """
 fetch_test_years.py
 
-Fetches 10-K Item 1A + financials for TEST_YEARS (2020-2023) only,
+fetches 10-K Item 1A + financials for TEST_YEARS (2020-2023) only,
 then appends to the existing raw CSVs (which already have 2013-2019).
-
-Run:
-    python src/fetch_test_years.py
 """
 
 import os
@@ -18,7 +15,7 @@ import pandas as pd
 import yfinance as yf
 from tqdm import tqdm
 
-# Reuse helpers from data_pipeline
+# reuse helpers from data_pipeline instead of duplicating everything
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from data_pipeline import (
     EDGAR_IDENTITY,
@@ -38,15 +35,15 @@ TEST_YEARS = list(range(2020, 2024))  # 2020–2023
 
 
 def run():
-    # Load existing data to know what's already fetched
+    # load existing data to avoid re-fetching
     existing_filings = pd.read_csv(os.path.join(RAW_DIR, "filings.csv"))
     existing_targets = pd.read_csv(os.path.join(RAW_DIR, "targets.csv"))
 
-    # Use the same 50 companies as the original run
+    # use the same 50 companies from the original run
     companies = select_companies()
     print(f"Using {len(companies)} companies. Fetching years {TEST_YEARS}.\n")
 
-    # Build pairs — skip any (ticker, year) already in the CSV
+    # skip any (ticker, year) pairs already in the CSV
     existing_keys = set(zip(existing_filings["ticker"], existing_filings["year"]))
     pairs = [
         (row["Symbol"], yr, row.get("CIK"))
@@ -88,14 +85,14 @@ def run():
         print("No new filings fetched. Check EDGAR connectivity.")
         return
 
-    # Use the EXISTING train-set threshold (no leakage)
+    # use the existing train-set threshold to avoid label leakage
     threshold = existing_targets["vol_threshold"].iloc[0]
 
     new_targets = pd.DataFrame(targets_rows)
     new_targets["high_volatility"] = (new_targets["volatility"] > threshold).astype(int)
     new_targets["vol_threshold"]   = threshold
 
-    # Append to existing CSVs
+    # append to existing CSVs
     new_filings    = pd.DataFrame(filings_rows)
     new_financials = pd.DataFrame(financials_rows)
 
@@ -113,7 +110,7 @@ def run():
     print(f"  High-volatility rate (test): {new_targets['high_volatility'].mean():.1%}")
     print(f"  Threshold (from train):      {threshold:.4f}")
 
-    # Verify final counts
+    # sanity check final counts
     final = pd.read_csv(os.path.join(RAW_DIR, "targets.csv"))
     print(f"\nFinal dataset: {len(final)} total rows")
     print(final.groupby("year").size().to_string())

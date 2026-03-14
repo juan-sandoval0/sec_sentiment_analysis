@@ -1,17 +1,15 @@
 """
 models.py
 
-All model families with custom training / hyperparameter loops.
-No bare .fit() with default parameters — every model is swept over a grid
-and every metric is tracked at each combination.
+all four model families with manual hyperparameter sweeps.
+no bare .fit() with defaults — every model gets a proper grid search
+and i track metrics at every combination so i can see what's happening.
 
-Model families
---------------
+models:
 1. Ridge Regression       — manual alpha grid, regression
 2. Logistic Regression    — manual C grid, classification
-3. Random Forest          — manual 18-combo nested grid, regression + classification
-4. MLP (PyTorch)          — full custom forward/backward loop, early stopping,
-                            ReduceLROnPlateau scheduling, hyperparam grid search
+3. Random Forest          — 18-combo grid, regression + classification
+4. MLP (PyTorch)          — custom training loop, early stopping, lr scheduling, grid search
 """
 
 import numpy as np
@@ -51,20 +49,17 @@ def classification_metrics(y_true: np.ndarray, y_prob: np.ndarray) -> dict:
 # 1. Ridge Regression  —  manual alpha grid
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# Alpha range justified by p/n ratios: financial (p=4) and sentiment (p=8) are
-# well-conditioned (p/n << 1), so low alphas [0.1, 1] are appropriate. For
-# tfidf (p=500, p/n≈2.3) and finbert (p=768, p/n≈3.6), X'X is rank-deficient
-# and alpha must compete with n≈216 data points, placing the effective regime
-# at [100, 10000]. Grid spans five decades to cover all feature sets.
+# for financial (p=4) and sentiment (p=8), p/n is tiny so low alphas work fine.
+# for tfidf (p=500) and finbert (p=768), X'X is rank-deficient and much
+# higher alpha is needed to compete with n≈216. spanning five decades covers all cases.
 RIDGE_ALPHAS = [0.1, 1.0, 10.0, 100.0, 1000.0, 5000.0, 10000.0]
 
 
 def ridge_grid_search(X_train, y_train, X_val, y_val,
                       feature_set_name: str = "") -> tuple[pd.DataFrame, Ridge]:
     """
-    Sweep regularization strength over RIDGE_ALPHAS.
-    Records train/val RMSE, R², MAE at every alpha.
-    Selects best model by val RMSE.
+    sweep RIDGE_ALPHAS and track train/val RMSE, R², MAE at each one.
+    picks best model by val RMSE.
     """
     records    = []
     best_rmse  = np.inf
@@ -96,21 +91,19 @@ def ridge_grid_search(X_train, y_train, X_val, y_val,
 # 2. Logistic Regression  —  manual C grid
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# C = 1/lambda where lambda is L2 penalty strength. With n=216 and high-dim
-# feature sets (p up to 1280), strong regularization is needed: best C is
-# expected in [0.001, 0.1] for tfidf/finbert/all. For financial/sentiment
-# (p=4-8, underparameterized), C up to 10-100 is appropriate. Adding C=0.0001
-# provides a strongly regularized baseline to detect the overfitting boundary.
+# C = 1/lambda. with n=216 and high-dim features (p up to 1280), strong
+# regularization is needed — expecting best C in [0.001, 0.1] for tfidf/finbert/all.
+# for financial/sentiment (p=4-8), C up to 10-100 is reasonable.
+# C=0.0001 is a strongly-regularized baseline to see where overfitting kicks in.
 LOGREG_CS = [0.0001, 0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
 
 
 def logreg_grid_search(X_train, y_train, X_val, y_val,
                        feature_set_name: str = "") -> tuple[pd.DataFrame, LogisticRegression]:
     """
-    Sweep inverse regularization strength over LOGREG_CS.
-    class_weight='balanced' compensates for the 25/75 class split.
-    Records train/val AUC, F1, accuracy at every C.
-    Selects best model by val AUC.
+    sweep LOGREG_CS and track train/val AUC, F1, accuracy at each C.
+    class_weight='balanced' because i have a 25/75 class split.
+    picks best model by val AUC.
     """
     records   = []
     best_auc  = -np.inf
@@ -146,13 +139,10 @@ def logreg_grid_search(X_train, y_train, X_val, y_val,
 # 3. Random Forest  —  manual 18-combination nested grid
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# n_estimators [100, 200]: tests whether variance reduction has saturated for
-#   n=216; more trees reduce variance at diminishing returns past ~100.
-# max_depth [3, 5, 10]: depth 3 → max 8 leaves (conservative for n=216),
-#   depth 5 → 32 leaves, depth 10 → up to 1024 leaves (likely to overfit).
-# min_samples_leaf [1, 10, 15]: 1=unpruned, 10=n/20 heuristic,
-#   15≈sqrt(216)≈14.7 (classic rule of thumb for stable leaf estimates).
-# Grid: 2 × 3 × 3 = 18 combinations.
+# n_estimators [100, 200]: checking if variance reduction has saturated at n=216
+# max_depth [3, 5, 10]: depth 3 = max 8 leaves (safe for n=216), depth 10 = probably overfit
+# min_samples_leaf [1, 10, 15]: 1=unpruned, 15≈sqrt(216) is a common rule of thumb
+# 2 × 3 × 3 = 18 combinations total
 RF_GRID = {
     "n_estimators":    [100, 200],
     "max_depth":       [3, 5, 10],
@@ -164,10 +154,10 @@ def rf_grid_search(X_train, y_train, X_val, y_val,
                    task: str = "classification",
                    feature_set_name: str = "") -> tuple[pd.DataFrame, object]:
     """
-    Manually iterate over all 18 hyperparameter combinations.
+    iterate over all 18 hyperparameter combos manually.
     task: 'classification' | 'regression'
-    Selects best model by val AUC (classification) or val RMSE (regression).
-    Returns (results_df, best_model).
+    picks best by val AUC (classification) or val RMSE (regression).
+    returns (results_df, best_model)
     """
     combos = [
         (n, d, m)
@@ -177,7 +167,7 @@ def rf_grid_search(X_train, y_train, X_val, y_val,
     ]
 
     records    = []
-    best_score = -np.inf   # higher is better after sign flip for RMSE
+    best_score = -np.inf   # negate RMSE so higher is always better
     best_model = None
 
     for n_est, max_depth, min_leaf in tqdm(
@@ -235,8 +225,8 @@ def rf_grid_search(X_train, y_train, X_val, y_val,
 class MLP(nn.Module):
     """
     3-layer MLP with BatchNorm and Dropout.
-    Output is a single logit (sigmoid applied externally for classification,
-    raw value used for regression).
+    single output logit — sigmoid applied outside for classification,
+    raw value for regression.
     """
     def __init__(self, input_dim: int, hidden_dims: list[int], dropout: float):
         super().__init__()
@@ -258,7 +248,7 @@ class MLP(nn.Module):
 
 
 class EarlyStopping:
-    """Stop training when val loss stops improving; restore best weights."""
+    """stop training when val loss stops improving and restore best weights"""
     def __init__(self, patience: int = 10, min_delta: float = 1e-4):
         self.patience   = patience
         self.min_delta  = min_delta
@@ -280,15 +270,14 @@ class EarlyStopping:
             model.load_state_dict(self.best_state)
 
 
-# hidden_dims: [64,32] (~2k params) suits financial/sentiment where input is small;
-#   [128,64] (~10k params) suits tfidf; [256,128,64] (~50k params) suits finbert/all.
-#   Original single choice of [256,128,64] had param/sample ratio ≈230 — too large
-#   for n=216 without heavy regularization.
-# dropout [0.2, 0.5]: higher dropout justified for small datasets.
-# lr [3e-4, 1e-3]: standard Adam learning rates; ReduceLROnPlateau handles decay.
-# weight_decay [1e-4, 1e-3, 1e-2]: L2 regularization sweep — with high p/n ratios,
-#   stronger decay (1e-2) is expected to outperform weak decay (1e-4).
-# Grid: 3 × 2 × 2 × 3 = 36 combinations.
+# hidden_dims: [64,32] is small enough for financial/sentiment (low-dim input),
+#   [128,64] suits tfidf, [256,128,64] for finbert/all.
+#   [256,128,64] alone has ~230 params/sample which is too large for n=216
+#   without heavy regularization.
+# dropout [0.2, 0.5]: higher makes sense for small datasets
+# lr [3e-4, 1e-3]: standard Adam range, scheduler handles the decay
+# weight_decay [1e-4, 1e-3, 1e-2]: with high p/n ratios i expect 1e-2 to win
+# 3 × 2 × 2 × 3 = 36 combinations
 MLP_GRID = {
     "hidden_dims":  [[64, 32], [128, 64], [256, 128, 64]],
     "dropout":      [0.2, 0.5],
@@ -305,16 +294,16 @@ def train_mlp(
     patience: int = 7, device=None,
 ) -> tuple[MLP, dict]:
     """
-    Custom training loop — no .fit().
+    manual training loop, no .fit().
 
-    Each epoch:
-        TRAIN:  zero_grad → forward → loss → backward → clip_grad → step
-        EVAL:   model.eval() + torch.no_grad() for val loss
+    each epoch:
+        TRAIN:    zero_grad → forward → loss → backward → clip_grad → step
+        EVAL:     model.eval() + torch.no_grad() for val loss
         SCHEDULE: ReduceLROnPlateau on val loss
-        STOP:   EarlyStopping with patience; restore best weights on stop
+        STOP:     EarlyStopping with patience, restores best weights
 
-    Returns (trained_model, history_dict).
-    history_dict keys: train_loss, val_loss, lr, epochs_trained
+    returns (trained_model, history_dict)
+    history keys: train_loss, val_loss, lr, epochs_trained
     """
     if device is None:
         device = (
@@ -323,7 +312,7 @@ def train_mlp(
             else torch.device("cpu")
         )
 
-    # ── Datasets ──
+    # tensors
     X_tr = torch.tensor(X_train, dtype=torch.float32)
     y_tr = torch.tensor(y_train, dtype=torch.float32)
     X_v  = torch.tensor(X_val,   dtype=torch.float32).to(device)
@@ -332,7 +321,7 @@ def train_mlp(
     loader = DataLoader(TensorDataset(X_tr, y_tr),
                         batch_size=batch_size, shuffle=True, drop_last=False)
 
-    # ── Model, loss, optimizer, scheduler ──
+    # model, loss, optimizer, scheduler
     model     = MLP(X_train.shape[1], hidden_dims, dropout).to(device)
     criterion = (nn.BCEWithLogitsLoss() if task == "classification"
                  else nn.MSELoss())
@@ -347,7 +336,7 @@ def train_mlp(
 
     for epoch in range(max_epochs):
 
-        # ── Training phase ──────────────────────────────────────────────────
+        # training phase
         model.train()
         batch_losses = []
 
@@ -359,20 +348,20 @@ def train_mlp(
             logits = model(X_batch)
             loss   = criterion(logits, y_batch)
             loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)  # clip grads to avoid explosion
             optimizer.step()
 
             batch_losses.append(loss.item())
 
         train_loss = float(np.mean(batch_losses))
 
-        # ── Validation phase ────────────────────────────────────────────────
+        # validation phase
         model.eval()
         with torch.no_grad():
             val_logits = model(X_v)
             val_loss   = criterion(val_logits, y_v).item()
 
-        # ── LR scheduling & logging ─────────────────────────────────────────
+        # lr scheduling and logging
         scheduler.step(val_loss)
         current_lr = optimizer.param_groups[0]["lr"]
 
@@ -380,7 +369,7 @@ def train_mlp(
         history["val_loss"].append(val_loss)
         history["lr"].append(current_lr)
 
-        # ── Early stopping ──────────────────────────────────────────────────
+        # early stopping check
         if stopper.step(val_loss, model):
             break
 
@@ -396,9 +385,9 @@ def mlp_grid_search(
     feature_set_name: str = "",
 ) -> tuple[pd.DataFrame, MLP, dict]:
     """
-    Sweep all MLP hyperparameter combinations in MLP_GRID.
-    Each combination runs a full custom training loop.
-    Returns (results_df, best_model, best_history).
+    sweep all MLP hyperparameter combos in MLP_GRID.
+    each combo runs a full training loop from scratch.
+    returns (results_df, best_model, best_history)
     """
     device = (
         torch.device("cuda") if torch.cuda.is_available()
@@ -429,14 +418,14 @@ def mlp_grid_search(
             task=task, device=device,
         )
 
-        # ── Inference ──
+        # run inference on train + val to get metrics
         model.eval()
         with torch.no_grad():
             tr_logits  = model(torch.tensor(X_train, dtype=torch.float32).to(device)).cpu().numpy()
             val_logits = model(torch.tensor(X_val,   dtype=torch.float32).to(device)).cpu().numpy()
 
         if task == "classification":
-            tr_prob  = 1 / (1 + np.exp(-tr_logits))
+            tr_prob  = 1 / (1 + np.exp(-tr_logits))   # manual sigmoid
             val_prob = 1 / (1 + np.exp(-val_logits))
             tr_m     = classification_metrics(y_train, tr_prob)
             val_m    = classification_metrics(y_val,   val_prob)

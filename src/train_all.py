@@ -1,14 +1,11 @@
 """
 train_all.py
 
-Re-runs Steps 2–3 from the notebook programmatically:
-  - Builds all feature sets (train / val / test)
-  - Runs grid search for Ridge, LogReg, Random Forest, MLP
-  - Prints full val results tables so you can pick models for test evaluation
-  - Saves results to results/val_summary.csv
-
-Usage:
-    python src/train_all.py
+runs steps 2-3 from the notebook programmatically:
+  - builds all feature sets (train / val / test)
+  - grid search for Ridge, LogReg, Random Forest, MLP
+  - prints full val results tables so i can pick models for test eval
+  - saves results to results/val_summary.csv
 """
 
 import os, sys
