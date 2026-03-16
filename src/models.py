@@ -24,10 +24,6 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# Metric helpers
-# ═══════════════════════════════════════════════════════════════════════════════
-
 def regression_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict:
     return {
         "rmse": float(np.sqrt(mean_squared_error(y_true, y_pred))),
@@ -45,9 +41,7 @@ def classification_metrics(y_true: np.ndarray, y_prob: np.ndarray) -> dict:
     }
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# 1. Ridge Regression: manual alpha grid
-# ═══════════════════════════════════════════════════════════════════════════════
+# ridge regression
 
 # for financial (p=4) and sentiment (p=8), p/n is tiny so low alphas work fine.
 # for tfidf (p=500) and finbert (p=768), X'X is rank-deficient and much
@@ -87,9 +81,7 @@ def ridge_grid_search(X_train, y_train, X_val, y_val,
     return pd.DataFrame(records), best_model
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# 2. Logistic Regression: manual C grid
-# ═══════════════════════════════════════════════════════════════════════════════
+# logistic regression
 
 # C = 1/lambda. with n=216 and high-dim features (p up to 1280), strong
 # regularization is needed, expecting best C in [0.001, 0.1] for tfidf/finbert/all.
@@ -135,9 +127,7 @@ def logreg_grid_search(X_train, y_train, X_val, y_val,
     return pd.DataFrame(records), best_model
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# 3. Random Forest: manual 18-combination nested grid
-# ═══════════════════════════════════════════════════════════════════════════════
+# random forest
 
 # n_estimators [100, 200]: checking if variance reduction has saturated at n=216
 # max_depth [3, 5, 10]: depth 3 = max 8 leaves (safe for n=216), depth 10 = probably overfit
@@ -218,9 +208,7 @@ def rf_grid_search(X_train, y_train, X_val, y_val,
     return pd.DataFrame(records), best_model
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# 4. Custom PyTorch MLP: full manual training loop
-# ═══════════════════════════════════════════════════════════════════════════════
+# MLP (PyTorch)
 
 class MLP(nn.Module):
     """
@@ -312,7 +300,6 @@ def train_mlp(
             else torch.device("cpu")
         )
 
-    # tensors
     X_tr = torch.tensor(X_train, dtype=torch.float32)
     y_tr = torch.tensor(y_train, dtype=torch.float32)
     X_v  = torch.tensor(X_val,   dtype=torch.float32).to(device)
@@ -321,7 +308,6 @@ def train_mlp(
     loader = DataLoader(TensorDataset(X_tr, y_tr),
                         batch_size=batch_size, shuffle=True, drop_last=False)
 
-    # model, loss, optimizer, scheduler
     model     = MLP(X_train.shape[1], hidden_dims, dropout).to(device)
     criterion = (nn.BCEWithLogitsLoss() if task == "classification"
                  else nn.MSELoss())
@@ -336,7 +322,6 @@ def train_mlp(
 
     for epoch in range(max_epochs):
 
-        # training phase
         model.train()
         batch_losses = []
 
@@ -355,13 +340,11 @@ def train_mlp(
 
         train_loss = float(np.mean(batch_losses))
 
-        # validation phase
         model.eval()
         with torch.no_grad():
             val_logits = model(X_v)
             val_loss   = criterion(val_logits, y_v).item()
 
-        # lr scheduling and logging
         scheduler.step(val_loss)
         current_lr = optimizer.param_groups[0]["lr"]
 
@@ -369,7 +352,6 @@ def train_mlp(
         history["val_loss"].append(val_loss)
         history["lr"].append(current_lr)
 
-        # early stopping check
         if stopper.step(val_loss, model):
             break
 
@@ -418,7 +400,6 @@ def mlp_grid_search(
             task=task, device=device,
         )
 
-        # run inference on train + val to get metrics
         model.eval()
         with torch.no_grad():
             tr_logits  = model(torch.tensor(X_train, dtype=torch.float32).to(device)).cpu().numpy()

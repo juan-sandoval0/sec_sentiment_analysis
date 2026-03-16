@@ -92,7 +92,6 @@ def run():
     new_targets["high_volatility"] = (new_targets["volatility"] > threshold).astype(int)
     new_targets["vol_threshold"]   = threshold
 
-    # append to existing CSVs
     new_filings    = pd.DataFrame(filings_rows)
     new_financials = pd.DataFrame(financials_rows)
 

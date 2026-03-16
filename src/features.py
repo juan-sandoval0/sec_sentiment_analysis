@@ -37,8 +37,6 @@ FINBERT_MODEL  = "yiyanghkust/finbert-pretrain"
 MAX_TOKENS     = 512       # FinBERT hard limit
 
 
-# ── Load raw data ──────────────────────────────────────────────────────────────
-
 def load_raw():
     """
     merges filings, targets, financials and splits by year into train/val/test.
@@ -62,8 +60,6 @@ def load_raw():
             df[val_mask].reset_index(drop=True),
             df[test_mask].reset_index(drop=True))
 
-
-# ── Feature Set 1: Financial ratios ───────────────────────────────────────────
 
 def build_financial_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
                               df_test: pd.DataFrame):
@@ -94,8 +90,6 @@ def build_financial_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
 
     return X_train, X_val, X_test, scaler
 
-
-# ── Feature Set 2: Sentiment (Loughran-McDonald), implemented from scratch ───
 
 def load_lm_wordlists(path: str = LM_PATH) -> dict:
     """
@@ -190,8 +184,6 @@ def build_sentiment_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
     return X_train, X_val, X_test, scaler
 
 
-# ── Feature Set 3: TF-IDF ─────────────────────────────────────────────────────
-
 def build_tfidf_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
                          df_test: pd.DataFrame,
                          max_features: int = 500):
@@ -213,8 +205,6 @@ def build_tfidf_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
 
     return X_train, X_val, X_test, vectorizer
 
-
-# ── Feature Set 4: FinBERT embeddings ─────────────────────────────────────────
 
 def _embed_single(text: str, tokenizer, model, device) -> np.ndarray:
     """
@@ -314,8 +304,6 @@ def build_finbert_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
 
     return X_train, X_val, X_test
 
-
-# ── Build all feature sets ─────────────────────────────────────────────────────
 
 def build_all_features():
     """

@@ -21,8 +21,6 @@ plt.style.use("seaborn-v0_8-whitegrid")
 PALETTE = plt.cm.tab10(np.linspace(0, 1, 10))
 
 
-# ── Target distribution ────────────────────────────────────────────────────────
-
 def plot_target_distribution(y_train: np.ndarray, y_val: np.ndarray,
                               threshold: float):
     fig, ax = plt.subplots(figsize=(8, 4))
@@ -39,8 +37,6 @@ def plot_target_distribution(y_train: np.ndarray, y_val: np.ndarray,
     fig.tight_layout()
     _save(fig, "target_distribution.png")
 
-
-# ── Regularization sensitivity curves ─────────────────────────────────────────
 
 def plot_regularization_curves(results_df: pd.DataFrame,
                                 param_col: str,
@@ -77,8 +73,6 @@ def plot_regularization_curves(results_df: pd.DataFrame,
     _save(fig, fname)
 
 
-# ── ROC curves ────────────────────────────────────────────────────────────────
-
 def plot_roc_curves(model_probs: dict, y_true: np.ndarray,
                     fname: str = "roc_curves.png"):
     """
@@ -99,8 +93,6 @@ def plot_roc_curves(model_probs: dict, y_true: np.ndarray,
     fig.tight_layout()
     _save(fig, fname)
 
-
-# ── MLP training curves ────────────────────────────────────────────────────────
 
 def plot_training_curves(history: dict, title: str = "MLP Training Curves",
                           fname: str = "mlp_training.png"):
@@ -124,8 +116,6 @@ def plot_training_curves(history: dict, title: str = "MLP Training Curves",
     fig.tight_layout()
     _save(fig, fname)
 
-
-# ── Feature importance ────────────────────────────────────────────────────────
 
 def plot_feature_importance(model, feature_names: list,
                              top_n: int = 20, fname: str = "rf_importance.png"):
@@ -153,8 +143,6 @@ def plot_ridge_coefficients(model, feature_names: list,
     _save(fig, fname)
 
 
-# ── Heatmap: val AUC across feature sets × model families ─────────────────────
-
 def plot_model_comparison_heatmap(summary_df: pd.DataFrame,
                                    metric: str = "val_auc",
                                    fname: str = "model_comparison.png"):
@@ -170,8 +158,6 @@ def plot_model_comparison_heatmap(summary_df: pd.DataFrame,
     _save(fig, fname)
 
 
-# ── Results table ──────────────────────────────────────────────────────────────
-
 def print_results_table(all_results: dict) -> pd.DataFrame:
     """
     all_results: {model_label: {metric_name: value, ...}}
@@ -186,8 +172,6 @@ def print_results_table(all_results: dict) -> pd.DataFrame:
     print("=" * 65)
     return df
 
-
-# ── Internal ───────────────────────────────────────────────────────────────────
 
 def _save(fig, fname: str):
     path = os.path.join(FIGURES_DIR, fname)

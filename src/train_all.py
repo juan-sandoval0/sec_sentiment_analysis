@@ -22,19 +22,13 @@ from src.models import (ridge_grid_search, logreg_grid_search,
 RESULTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "results")
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
-# ── Feature engineering ────────────────────────────────────────────────────────
-print("=" * 65)
-print("STEP 2 — Feature Engineering")
-print("=" * 65)
+print("Step 2 — Feature Engineering")
 feature_sets, targets, df_train, df_val, df_test = build_all_features()
 
 y_reg_train, y_reg_val, y_reg_test = targets["regression"]
 y_cls_train, y_cls_val, y_cls_test = targets["classification"]
 
-# ── Ridge ──────────────────────────────────────────────────────────────────────
-print("\n" + "=" * 65)
-print("STEP 3a — Ridge Regression")
-print("=" * 65)
+print("\nStep 3a — Ridge Regression")
 ridge_results, ridge_models = [], {}
 for fs_name, (X_tr, X_val, X_te) in feature_sets.items():
     df_res, best = ridge_grid_search(X_tr, y_reg_train, X_val, y_reg_val,
@@ -47,10 +41,7 @@ print("\nFull Ridge results (sorted by val_rmse per feature set):")
 print(ridge_df.sort_values(["feature_set", "val_rmse"])
               .to_string(index=False))
 
-# ── Logistic Regression ────────────────────────────────────────────────────────
-print("\n" + "=" * 65)
-print("STEP 3b — Logistic Regression")
-print("=" * 65)
+print("\nStep 3b — Logistic Regression")
 logreg_results, logreg_models = [], {}
 for fs_name, (X_tr, X_val, X_te) in feature_sets.items():
     df_res, best = logreg_grid_search(X_tr, y_cls_train, X_val, y_cls_val,
@@ -63,10 +54,7 @@ print("\nFull LogReg results (sorted by val_auc desc per feature set):")
 print(logreg_df.sort_values(["feature_set", "val_auc"], ascending=[True, False])
               .to_string(index=False))
 
-# ── Random Forest ──────────────────────────────────────────────────────────────
-print("\n" + "=" * 65)
-print("STEP 3c — Random Forest")
-print("=" * 65)
+print("\nStep 3c — Random Forest")
 rf_results, rf_models = [], {}
 for fs_name, (X_tr, X_val, X_te) in feature_sets.items():
     print(f"  RF [{fs_name}]")
@@ -80,10 +68,7 @@ print("\nFull RF results (sorted by val_auc desc per feature set):")
 print(rf_df.sort_values(["feature_set", "val_auc"], ascending=[True, False])
            .to_string(index=False))
 
-# ── MLP ────────────────────────────────────────────────────────────────────────
-print("\n" + "=" * 65)
-print("STEP 3d — MLP (PyTorch)")
-print("=" * 65)
+print("\nStep 3d — MLP (PyTorch)")
 mlp_results, mlp_models, mlp_histories = [], {}, {}
 for fs_name in ["financial", "sentiment", "tfidf", "finbert"]:
     X_tr, X_val, X_te = feature_sets[fs_name]
@@ -100,10 +85,7 @@ print("\nFull MLP results (sorted by val_auc desc per feature set):")
 print(mlp_df.sort_values(["feature_set", "val_auc"], ascending=[True, False])
             .to_string(index=False))
 
-# ── Summary ────────────────────────────────────────────────────────────────────
-print("\n" + "=" * 65)
-print("VAL SUMMARY — best per (model × feature set)")
-print("=" * 65)
+print("\nVal summary — best per (model × feature set)")
 summary_rows = []
 for fs in feature_sets:
     for df_, label in [(logreg_df, "logreg"), (rf_df, "rf"), (mlp_df, "mlp")]:

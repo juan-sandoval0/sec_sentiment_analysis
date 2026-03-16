@@ -17,8 +17,6 @@ from tqdm import tqdm
 
 warnings.filterwarnings("ignore")
 
-# ── Config ────────────────────────────────────────────────────────────────────
-
 # SEC requires a user-agent string or requests get blocked
 EDGAR_IDENTITY = os.getenv("EDGAR_IDENTITY", "Juan Sandoval juansd@stanford.edu")
 
@@ -38,8 +36,6 @@ REQUEST_DELAY = 0.6   # EDGAR rate-limits if requests come too fast
 
 os.makedirs(RAW_DIR, exist_ok=True)
 
-
-# ── Company selection ──────────────────────────────────────────────────────────
 
 def select_companies(n: int = N_COMPANIES, seed: int = SEED) -> pd.DataFrame:
     """pick n companies spread across sectors so the sample isn't all tech"""
@@ -66,8 +62,6 @@ def select_companies(n: int = N_COMPANIES, seed: int = SEED) -> pd.DataFrame:
 
     return result.head(n)
 
-
-# ── EDGAR: fetch Item 1A ───────────────────────────────────────────────────────
 
 def fetch_item1a(ticker: str, year: int, cik=None):
     """
@@ -120,8 +114,6 @@ def fetch_item1a(ticker: str, year: int, cik=None):
         return None, None
 
 
-# ── Yahoo Finance: realized volatility ────────────────────────────────────────
-
 def compute_volatility(ticker: str, filing_date) -> float | None:
     """
     annualized realized vol = std(log daily returns) * sqrt(252)
@@ -147,8 +139,6 @@ def compute_volatility(ticker: str, filing_date) -> float | None:
     except Exception:
         return None
 
-
-# ── Yahoo Finance: financial ratios ───────────────────────────────────────────
 
 def fetch_financial_ratios(ticker: str, year: int) -> dict:
     """
@@ -183,7 +173,6 @@ def fetch_financial_ratios(ticker: str, year: int) -> dict:
 
         bs_data = bs[bs_col]
 
-        # Debt / Equity
         debt   = bs_data.get("Total Debt",
                  bs_data.get("Long Term Debt", np.nan))
         equity = bs_data.get("Stockholders Equity",
@@ -191,20 +180,18 @@ def fetch_financial_ratios(ticker: str, year: int) -> dict:
         if pd.notna(debt) and pd.notna(equity) and equity != 0:
             out["debt_equity"] = float(debt / equity)
 
-        # Current Ratio
         ca = bs_data.get("Current Assets", np.nan)
         cl = bs_data.get("Current Liabilities", np.nan)
         if pd.notna(ca) and pd.notna(cl) and cl != 0:
             out["current_ratio"] = float(ca / cl)
 
-        # ROA
         if inc_col is not None:
             net_income   = inc[inc_col].get("Net Income", np.nan)
             total_assets = bs_data.get("Total Assets", np.nan)
             if pd.notna(net_income) and pd.notna(total_assets) and total_assets != 0:
                 out["roa"] = float(net_income / total_assets)
 
-        # Log Market Cap: shares * price at start of year, log to squish the scale
+        # log to squish the scale
         try:
             hist = yf.Ticker(ticker).history(
                 start=f"{year}-01-01", end=f"{year}-02-15", auto_adjust=True
@@ -222,8 +209,6 @@ def fetch_financial_ratios(ticker: str, year: int) -> dict:
     except Exception:
         return out
 
-
-# ── Main pipeline ──────────────────────────────────────────────────────────────
 
 def run_pipeline():
     companies = select_companies()
@@ -268,7 +253,7 @@ def run_pipeline():
         ratios = fetch_financial_ratios(ticker, year)
         financials_rows.append({"ticker": ticker, "year": year, **ratios})
 
-    # ── compute binary label from TRAIN set only, don't leak val/test info ──
+    # compute binary label from TRAIN set only, don't leak val/test info
     df_targets = pd.DataFrame(targets_rows)
     if df_targets.empty:
         print("\nERROR: No observations collected. Check EDGAR connectivity and identity.")
@@ -278,7 +263,6 @@ def run_pipeline():
     df_targets["high_volatility"] = (df_targets["volatility"] > threshold).astype(int)
     df_targets["vol_threshold"]   = threshold
 
-    # ── save everything ──
     df_filings    = pd.DataFrame(filings_rows)
     df_financials = pd.DataFrame(financials_rows)
 

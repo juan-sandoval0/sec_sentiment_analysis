@@ -34,7 +34,6 @@ MODELS_TO_EVAL = [
     ("mlp",    "finbert"),
 ]
 
-# ── Features ───────────────────────────────────────────────────────────────────
 print("Loading features...")
 feature_sets, targets, df_train, df_val, df_test = build_all_features()
 y_cls_train, y_cls_val, y_cls_test = targets["classification"]
@@ -42,7 +41,6 @@ print(f"  Train={len(y_cls_train)}  Val={len(y_cls_val)}  Test={len(y_cls_test)}
 
 assert len(y_cls_test) > 0, "Test set is empty — check data pipeline."
 
-# ── Train & evaluate ───────────────────────────────────────────────────────────
 test_results = []
 
 for model_type, fs_name in MODELS_TO_EVAL:
@@ -93,7 +91,6 @@ for model_type, fs_name in MODELS_TO_EVAL:
     print(f"  val AUC={auc_val:.4f}  test AUC={auc_test:.4f}  "
           f"test F1={f1_test:.4f}  test acc={acc_test:.4f}")
 
-# ── Results table ──────────────────────────────────────────────────────────────
 test_df = pd.DataFrame(test_results).sort_values("test_auc", ascending=False)
 
 print("\n" + "=" * 75)
