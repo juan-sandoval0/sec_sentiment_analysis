@@ -177,4 +177,4 @@ def _save(fig, fname: str):
     path = os.path.join(FIGURES_DIR, fname)
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"  Saved → {path}")
+    print(f"  Saved -> {path}")

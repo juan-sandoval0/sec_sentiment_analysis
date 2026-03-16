@@ -102,7 +102,7 @@ print(f"\nMean test AUC          : {test_df['test_auc'].mean():.4f}")
 print(f"Best test AUC          : {test_df['test_auc'].max():.4f}  "
       f"({test_df.loc[test_df['test_auc'].idxmax(), 'model']} × "
       f"{test_df.loc[test_df['test_auc'].idxmax(), 'feature_set']})")
-print(f"Mean AUC drop val→test : {test_df['auc_delta'].mean():.4f}")
+print(f"Mean AUC drop val->test : {test_df['auc_delta'].mean():.4f}")
 
 test_df.to_csv(os.path.join(RESULTS_DIR, "test_summary.csv"), index=False)
-print("\nSaved → results/test_summary.csv")
+print("\nSaved -> results/test_summary.csv")

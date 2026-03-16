@@ -99,5 +99,5 @@ for fs in feature_sets:
 summary_df = pd.DataFrame(summary_rows)
 print(summary_df.sort_values("val_auc", ascending=False).to_string(index=False))
 summary_df.to_csv(os.path.join(RESULTS_DIR, "val_summary.csv"), index=False)
-print(f"\nSaved → results/val_summary.csv")
+print(f"\nSaved -> results/val_summary.csv")
 print("\nReview the results above, then edit models_to_evaluate in the notebook Step 5 cell.")

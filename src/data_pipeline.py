@@ -77,7 +77,7 @@ def fetch_item1a(ticker: str, year: int, cik=None):
         company = Company(int(cik)) if pd.notna(cik) else Company(ticker)
         filings = company.get_filings(form="10-K")
 
-        # Jul Y → Jun Y+1 catches FY-Y regardless of fiscal year end date
+        # Jul Y -> Jun Y+1 catches FY-Y regardless of fiscal year end date
         window_start = pd.Timestamp(f"{year}-07-01")
         window_end   = pd.Timestamp(f"{year + 1}-06-30")
 

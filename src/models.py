@@ -285,7 +285,7 @@ def train_mlp(
     manual training loop, no .fit().
 
     each epoch:
-        TRAIN:    zero_grad → forward → loss → backward → clip_grad → step
+        TRAIN:    zero_grad -> forward -> loss -> backward -> clip_grad -> step
         EVAL:     model.eval() + torch.no_grad() for val loss
         SCHEDULE: ReduceLROnPlateau on val loss
         STOP:     EarlyStopping with patience, restores best weights
