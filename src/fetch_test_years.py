@@ -1,5 +1,5 @@
 """
-fetch_test_years.py - fetch 2020-2023 filings and append to existing raw CSVs
+fetch 2020-2023 filings and append to existing raw CSVs
 """
 
 import os
