@@ -1,8 +1,5 @@
 """
-evaluate.py
-
-plotting and results table stuff.
-all figures saved to results/figures/
+evaluate.py - plotting helpers, all figures saved to results/figures/
 """
 
 import os
@@ -43,10 +40,6 @@ def plot_regularization_curves(results_df: pd.DataFrame,
                                 metric_col: str,
                                 title: str,
                                 fname: str):
-    """
-    two panels: train metric (left) and val metric (right) vs. hyperparam,
-    one curve per feature set. works for alpha, C, or any categorical param.
-    """
     train_col    = metric_col.replace("val_", "train_")
     feature_sets = results_df["feature_set"].unique()
     colors       = plt.cm.tab10(np.linspace(0, 1, len(feature_sets)))
@@ -75,9 +68,6 @@ def plot_regularization_curves(results_df: pd.DataFrame,
 
 def plot_roc_curves(model_probs: dict, y_true: np.ndarray,
                     fname: str = "roc_curves.png"):
-    """
-    model_probs: {model_label: predicted_probability_array}
-    """
     colors = plt.cm.tab10(np.linspace(0, 1, len(model_probs)))
     fig, ax = plt.subplots(figsize=(7, 6))
 
@@ -88,7 +78,7 @@ def plot_roc_curves(model_probs: dict, y_true: np.ndarray,
     ax.plot([0, 1], [0, 1], "k--", linewidth=0.8, label="Random")
     ax.set_xlabel("False Positive Rate")
     ax.set_ylabel("True Positive Rate")
-    ax.set_title("ROC Curves — Validation Set")
+    ax.set_title("ROC Curves - Validation Set")
     ax.legend(loc="lower right", fontsize=9)
     fig.tight_layout()
     _save(fig, fname)
@@ -109,7 +99,7 @@ def plot_training_curves(history: dict, title: str = "MLP Training Curves",
     axes[1].plot(epochs, history["lr"], color="green")
     axes[1].set_xlabel("Epoch")
     axes[1].set_ylabel("Learning Rate")
-    axes[1].set_title("Learning Rate Schedule (ReduceLROnPlateau)")
+    axes[1].set_title("LR Schedule (ReduceLROnPlateau)")
     axes[1].set_yscale("log")
 
     fig.suptitle(title, fontsize=13)
@@ -124,7 +114,7 @@ def plot_feature_importance(model, feature_names: list,
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.barh([feature_names[i] for i in idx], importances[idx], color="steelblue")
     ax.set_xlabel("Mean Decrease in Impurity")
-    ax.set_title(f"Random Forest Feature Importance (top {top_n})")
+    ax.set_title(f"RF Feature Importance (top {top_n})")
     fig.tight_layout()
     _save(fig, fname)
 
@@ -138,7 +128,7 @@ def plot_ridge_coefficients(model, feature_names: list,
     ax.barh([feature_names[i] for i in idx], coefs[idx], color=colors)
     ax.axvline(0, color="black", linewidth=0.8)
     ax.set_xlabel("Coefficient")
-    ax.set_title(f"Ridge Regression Coefficients (top {top_n} by |magnitude|)")
+    ax.set_title(f"Ridge Coefficients (top {top_n} by magnitude)")
     fig.tight_layout()
     _save(fig, fname)
 
@@ -146,30 +136,19 @@ def plot_ridge_coefficients(model, feature_names: list,
 def plot_model_comparison_heatmap(summary_df: pd.DataFrame,
                                    metric: str = "val_auc",
                                    fname: str = "model_comparison.png"):
-    """
-    summary_df needs columns: model, feature_set, <metric>
-    """
     pivot = summary_df.pivot(index="feature_set", columns="model", values=metric)
     fig, ax = plt.subplots(figsize=(9, 4))
     sns.heatmap(pivot, annot=True, fmt=".3f", cmap="YlGnBu",
                 linewidths=0.5, ax=ax)
-    ax.set_title(f"Validation {metric.upper()} by Model × Feature Set")
+    ax.set_title(f"Validation {metric.upper()} by Model x Feature Set")
     fig.tight_layout()
     _save(fig, fname)
 
 
 def print_results_table(all_results: dict) -> pd.DataFrame:
-    """
-    all_results: {model_label: {metric_name: value, ...}}
-    prints a formatted summary table and returns it as a DataFrame
-    """
     rows = [{"model": name, **metrics} for name, metrics in all_results.items()]
     df   = pd.DataFrame(rows)
-    print("\n" + "=" * 65)
-    print("VALIDATION SET RESULTS SUMMARY")
-    print("=" * 65)
     print(df.to_string(index=False))
-    print("=" * 65)
     return df
 
 
@@ -177,4 +156,4 @@ def _save(fig, fname: str):
     path = os.path.join(FIGURES_DIR, fname)
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"  Saved -> {path}")
+    print(f"  saved {path}")

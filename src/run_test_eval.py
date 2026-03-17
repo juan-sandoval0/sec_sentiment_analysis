@@ -1,13 +1,5 @@
 """
-run_test_eval.py
-
-trains the best model × feature-set combos on train+val,
-then finally evaluates on the held-out 2020-2023 test set.
-
-models:
-    logreg × tfidf, logreg × finbert
-    rf     × tfidf, rf     × finbert
-    mlp    × tfidf, mlp    × finbert
+run_test_eval.py - evaluate best models on held-out 2020-2023 test set
 """
 
 import os, sys
@@ -34,19 +26,17 @@ MODELS_TO_EVAL = [
     ("mlp",    "finbert"),
 ]
 
-print("Loading features...")
 feature_sets, targets, df_train, df_val, df_test = build_all_features()
 y_cls_train, y_cls_val, y_cls_test = targets["classification"]
-print(f"  Train={len(y_cls_train)}  Val={len(y_cls_val)}  Test={len(y_cls_test)}\n")
+print(f"train={len(y_cls_train)}  val={len(y_cls_val)}  test={len(y_cls_test)}\n")
 
-assert len(y_cls_test) > 0, "Test set is empty — check data pipeline."
+assert len(y_cls_test) > 0, "test set is empty - check data pipeline"
 
 test_results = []
 
 for model_type, fs_name in MODELS_TO_EVAL:
     X_tr, X_val, X_te = feature_sets[fs_name]
-    label = f"{model_type} ({fs_name})"
-    print(f"Training {label}...")
+    print(f"{model_type} ({fs_name})...")
 
     if model_type == "logreg":
         df_res, best_model = logreg_grid_search(
@@ -83,26 +73,19 @@ for model_type, fs_name in MODELS_TO_EVAL:
         "feature_set": fs_name,
         "val_auc":     round(auc_val,  4),
         "test_auc":    round(auc_test, 4),
-        "auc_delta":   round(auc_test - auc_val, 4),  # positive = generalization bonus
+        "auc_delta":   round(auc_test - auc_val, 4),
         "val_f1":      round(f1_val,   4),
         "test_f1":     round(f1_test,  4),
         "test_acc":    round(acc_test, 4),
     })
-    print(f"  val AUC={auc_val:.4f}  test AUC={auc_test:.4f}  "
-          f"test F1={f1_test:.4f}  test acc={acc_test:.4f}")
+    print(f"  val AUC={auc_val:.4f}  test AUC={auc_test:.4f}  F1={f1_test:.4f}")
 
 test_df = pd.DataFrame(test_results).sort_values("test_auc", ascending=False)
 
-print("\n" + "=" * 75)
-print("TEST SET RESULTS  (2020–2023)")
-print("=" * 75)
+print("\nTest results (2020-2023):")
 print(test_df.to_string(index=False))
-print("=" * 75)
-print(f"\nMean test AUC          : {test_df['test_auc'].mean():.4f}")
-print(f"Best test AUC          : {test_df['test_auc'].max():.4f}  "
-      f"({test_df.loc[test_df['test_auc'].idxmax(), 'model']} × "
-      f"{test_df.loc[test_df['test_auc'].idxmax(), 'feature_set']})")
-print(f"Mean AUC drop val->test : {test_df['auc_delta'].mean():.4f}")
+print(f"\nmean test AUC: {test_df['test_auc'].mean():.4f}")
+print(f"best test AUC: {test_df['test_auc'].max():.4f}")
 
 test_df.to_csv(os.path.join(RESULTS_DIR, "test_summary.csv"), index=False)
-print("\nSaved -> results/test_summary.csv")
+print("saved results/test_summary.csv")

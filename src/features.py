@@ -1,14 +1,12 @@
 """
-features.py
-
-builds the four feature matrices from the raw CSVs.
-scalers and vectorizers are fit on train only, super important, no leakage.
+features.py - builds four feature matrices from raw CSVs.
+scalers/vectorizers fit on train only.
 
 feature sets:
-    X_financial  (4):   debt/equity, ROA, current ratio, log market cap
-    X_sentiment  (8):   Loughran-McDonald word ratios + fog index + log word count
-    X_tfidf      (500): TF-IDF unigrams, top 500
-    X_finbert    (768): mean-pooled FinBERT embeddings, chunked for long docs
+    financial (4):  debt/equity, ROA, current ratio, log market cap
+    sentiment (8):  Loughran-McDonald word ratios + fog index + log word count
+    tfidf     (500): TF-IDF unigrams
+    finbert   (768): mean-pooled FinBERT chunk embeddings
 """
 
 import os
@@ -30,18 +28,14 @@ FEATURES_DIR = os.path.join(DATA_DIR, "features")
 
 os.makedirs(FEATURES_DIR, exist_ok=True)
 
-TRAIN_YEARS    = list(range(2013, 2018))   # 2013–2017  (matches data_pipeline.py)
-VAL_YEARS      = list(range(2018, 2020))   # 2018–2019
-TEST_YEARS     = list(range(2020, 2024))   # 2020–2023  (held-out)
+TRAIN_YEARS    = list(range(2013, 2018))
+VAL_YEARS      = list(range(2018, 2020))
+TEST_YEARS     = list(range(2020, 2024))   # held-out
 FINBERT_MODEL  = "yiyanghkust/finbert-pretrain"
 MAX_TOKENS     = 512       # FinBERT hard limit
 
 
 def load_raw():
-    """
-    merges filings, targets, financials and splits by year into train/val/test.
-    returns (df_train, df_val, df_test)
-    """
     df_filings    = pd.read_csv(os.path.join(RAW_DIR, "filings.csv"))
     df_targets    = pd.read_csv(os.path.join(RAW_DIR, "targets.csv"))
     df_financials = pd.read_csv(os.path.join(RAW_DIR, "financials.csv"))
@@ -61,20 +55,14 @@ def load_raw():
             df[test_mask].reset_index(drop=True))
 
 
-def build_financial_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
-                              df_test: pd.DataFrame):
-    """
-    standardize the four financial ratio columns.
-    impute missing values with train medians first, then scale.
-    returns (X_train, X_val, X_test, fitted_scaler)
-    """
+def build_financial_features(df_train, df_val, df_test):
     cols = ["debt_equity", "roa", "current_ratio", "log_mktcap"]
 
     X_train = df_train[cols].values.astype(float)
     X_val   = df_val[cols].values.astype(float)
     X_test  = df_test[cols].values.astype(float) if len(df_test) > 0 else np.zeros((0, len(cols)))
 
-    # impute with train medians, fit on train only!! fall back to 0 if whole column is NaN
+    # impute with train medians only, fall back to 0 if whole column is NaN
     medians = np.nanmedian(X_train, axis=0)
     medians = np.where(np.isnan(medians), 0.0, medians)
     for i in range(X_train.shape[1]):
@@ -92,11 +80,6 @@ def build_financial_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
 
 
 def load_lm_wordlists(path: str = LM_PATH) -> dict:
-    """
-    loads the LM master dictionary CSV.
-    returns {category_name: set_of_uppercase_words}
-    nonzero value in the category column means the word belongs to it
-    """
     df = pd.read_csv(path)
     categories = ["Negative", "Positive", "Uncertainty",
                   "Litigious", "Strong_Modal", "Weak_Modal"]
@@ -108,17 +91,13 @@ def load_lm_wordlists(path: str = LM_PATH) -> dict:
 
 
 def _count_syllables(word: str) -> int:
-    """rough syllable count by counting vowel groups, good enough for fog index"""
-    word = word.lower().rstrip("e")          # silent trailing 'e'
+    """rough syllable count, good enough for fog index"""
+    word = word.lower().rstrip("e")   # silent trailing 'e'
     return max(1, len(re.findall(r"[aeiou]+", word)))
 
 
 def _gunning_fog(tokens: list, raw_text: str) -> float:
-    """
-    gunning fog readability index
-    = 0.4 * (words/sentences + 100 * complex_words/words)
-    complex word = 3+ syllables
-    """
+    """0.4 * (words/sentences + 100 * complex_words/words), complex = 3+ syllables"""
     n_words     = len(tokens)
     n_sentences = max(1, len(re.split(r"[.!?]+", raw_text)))
     if n_words == 0:
@@ -128,26 +107,18 @@ def _gunning_fog(tokens: list, raw_text: str) -> float:
 
 
 def extract_sentiment_features(text: str, wordlists: dict) -> list:
-    """
-    8 features per doc:
-        neg%, pos%, uncertainty%, litigious%, strong_modal%, weak_modal%
-        fog index
-        log(word_count + 1)
-    word-list ratios are raw_count / total_words
-    """
-    tokens    = re.findall(r"[A-Za-z']+", text.upper())
-    n_words   = len(tokens)
+    """neg%, pos%, uncertainty%, litigious%, strong_modal%, weak_modal%, fog, log(word_count+1)"""
+    tokens  = re.findall(r"[A-Za-z']+", text.upper())
+    n_words = len(tokens)
 
     if n_words == 0:
         return [0.0] * 8
-
-    token_list = tokens   # already uppercase
 
     features = []
     for cat in ["Negative", "Positive", "Uncertainty",
                 "Litigious", "Strong_Modal", "Weak_Modal"]:
         wl = wordlists.get(cat, set())
-        features.append(sum(1 for t in token_list if t in wl) / n_words)
+        features.append(sum(1 for t in tokens if t in wl) / n_words)
 
     features.append(_gunning_fog(tokens, text))
     features.append(np.log1p(n_words))
@@ -155,12 +126,7 @@ def extract_sentiment_features(text: str, wordlists: dict) -> list:
     return features
 
 
-def build_sentiment_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
-                              df_test: pd.DataFrame):
-    """
-    extract 8 sentiment features per doc from scratch using LM word lists.
-    returns (X_train, X_val, X_test, fitted_scaler)
-    """
+def build_sentiment_features(df_train, df_val, df_test):
     wordlists = load_lm_wordlists()
 
     def _batch(df, label=""):
@@ -184,14 +150,8 @@ def build_sentiment_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
     return X_train, X_val, X_test, scaler
 
 
-def build_tfidf_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
-                         df_test: pd.DataFrame,
-                         max_features: int = 500):
-    """
-    TF-IDF unigrams, vectorizer fit on train corpus only.
-    sublinear_tf=True uses log(1+tf) to dampen high-frequency terms.
-    returns (X_train, X_val, X_test, fitted_vectorizer)
-    """
+def build_tfidf_features(df_train, df_val, df_test, max_features: int = 500):
+    """sublinear_tf=True uses log(1+tf) to dampen high-frequency terms"""
     vectorizer = TfidfVectorizer(
         max_features=max_features,
         stop_words="english",
@@ -207,15 +167,10 @@ def build_tfidf_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
 
 
 def _embed_single(text: str, tokenizer, model, device) -> np.ndarray:
-    """
-    embed one document with FinBERT.
-    10-K filings are too long for a single forward pass, so chunk them up:
-    split into non-overlapping (MAX_TOKENS - 2) token chunks, leaving room for [CLS]/[SEP].
-    mean-pool each chunk's token embeddings, then average the chunk vectors.
-    """
+    """10-K filings are too long for one forward pass, so chunk and mean-pool"""
     enc    = tokenizer(text, return_tensors="pt", truncation=False,
                        add_special_tokens=False)
-    ids    = enc["input_ids"][0]              # (total_tokens,)
+    ids    = enc["input_ids"][0]
 
     chunk_size = MAX_TOKENS - 2
     chunks     = [ids[i: i + chunk_size] for i in range(0, len(ids), chunk_size)]
@@ -232,21 +187,15 @@ def _embed_single(text: str, tokenizer, model, device) -> np.ndarray:
             attn_mask = torch.ones_like(input_ids)
             out       = model(input_ids=input_ids, attention_mask=attn_mask)
 
-            # mean-pool token embeddings, skip [CLS] and [SEP]
-            hidden = out.last_hidden_state[0, 1:-1, :]    # (seq, 768)
+            # skip [CLS] and [SEP]
+            hidden = out.last_hidden_state[0, 1:-1, :]
             chunk_vecs.append(hidden.mean(dim=0).cpu().numpy())
 
-    return np.mean(chunk_vecs, axis=0)   # (768,)
+    return np.mean(chunk_vecs, axis=0)
 
 
-def build_finbert_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
-                            df_test: pd.DataFrame,
-                            cache_dir: str = FEATURES_DIR):
-    """
-    compute FinBERT embeddings with chunked mean pooling.
-    caches results per split to avoid rerunning the embeddings every time.
-    returns (X_train_scaled, X_val_scaled, X_test_scaled)
-    """
+def build_finbert_features(df_train, df_val, df_test, cache_dir: str = FEATURES_DIR):
+    """FinBERT embeddings with chunked mean pooling, cached per split"""
     cache_tr   = os.path.join(cache_dir, "X_finbert_train.npy")
     cache_val  = os.path.join(cache_dir, "X_finbert_val.npy")
     cache_test = os.path.join(cache_dir, "X_finbert_test.npy")
@@ -262,11 +211,11 @@ def build_finbert_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
             else torch.device("mps") if torch.backends.mps.is_available()
             else torch.device("cpu")
         )
-        print(f"  Computing missing FinBERT embeddings on {device}...")
+        print(f"  Computing FinBERT embeddings on {device}...")
         tokenizer = AutoTokenizer.from_pretrained(FINBERT_MODEL)
         model_fb  = AutoModel.from_pretrained(FINBERT_MODEL).to(device).eval()
     else:
-        print("  Loading FinBERT embeddings from cache...")
+        print("  Loading FinBERT from cache...")
 
     def _embed_batch(df, label):
         return np.array([
@@ -294,9 +243,7 @@ def build_finbert_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
     else:
         X_test = _embed_batch(df_test, "test")
         np.save(cache_test, X_test)
-        print(f"  Cached to {cache_dir}")
 
-    # normalize, fit scaler on train only, same rule as everything else
     scaler  = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_val   = scaler.transform(X_val)
@@ -306,16 +253,6 @@ def build_finbert_features(df_train: pd.DataFrame, df_val: pd.DataFrame,
 
 
 def build_all_features():
-    """
-    runs all the feature engineering steps in order.
-    returns:
-        feature_sets : dict  {name: (X_train, X_val, X_test)}
-        targets      : dict  {task: (y_train, y_val, y_test)}
-        df_train, df_val, df_test
-
-    if 2020-2023 data hasn't been fetched yet, df_test is empty and
-    X_test matrices have shape (0, p). the notebook handles this case.
-    """
     print("Loading raw data...")
     df_train, df_val, df_test = load_raw()
     print(f"  Train: {len(df_train)} | Val: {len(df_val)} | Test: {len(df_test)}\n")
@@ -332,7 +269,6 @@ def build_all_features():
     print("Building X_finbert...")
     X_fb_tr, X_fb_val, X_fb_te = build_finbert_features(df_train, df_val, df_test)
 
-    # stack everything together for the "all" feature set
     X_all_tr  = np.hstack([X_fin_tr,  X_sent_tr,  X_tfidf_tr,  X_fb_tr])
     X_all_val = np.hstack([X_fin_val, X_sent_val, X_tfidf_val, X_fb_val])
     X_all_te  = (np.hstack([X_fin_te, X_sent_te, X_tfidf_te, X_fb_te])

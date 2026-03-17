@@ -1,25 +1,17 @@
 """
-fetch_test_years.py
-
-fetches 10-K Item 1A + financials for TEST_YEARS (2020-2023) only,
-then appends to the existing raw CSVs (which already have 2013-2019).
+fetch_test_years.py - fetch 2020-2023 filings and append to existing raw CSVs
 """
 
 import os
 import sys
-import time
 import warnings
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 from tqdm import tqdm
 
-# reuse helpers from data_pipeline instead of duplicating everything
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from data_pipeline import (
-    EDGAR_IDENTITY,
-    REQUEST_DELAY,
     select_companies,
     fetch_item1a,
     compute_volatility,
@@ -31,19 +23,16 @@ warnings.filterwarnings("ignore")
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW_DIR  = os.path.join(BASE_DIR, "Data", "raw")
 
-TEST_YEARS = list(range(2020, 2024))  # 2020–2023
+TEST_YEARS = list(range(2020, 2024))
 
 
 def run():
-    # load existing data to avoid re-fetching
     existing_filings = pd.read_csv(os.path.join(RAW_DIR, "filings.csv"))
     existing_targets = pd.read_csv(os.path.join(RAW_DIR, "targets.csv"))
 
-    # use the same 50 companies from the original run
     companies = select_companies()
-    print(f"Using {len(companies)} companies. Fetching years {TEST_YEARS}.\n")
+    print(f"{len(companies)} companies, years {TEST_YEARS}\n")
 
-    # skip any (ticker, year) pairs already in the CSV
     existing_keys = set(zip(existing_filings["ticker"], existing_filings["year"]))
     pairs = [
         (row["Symbol"], yr, row.get("CIK"))
@@ -51,14 +40,14 @@ def run():
         for yr in TEST_YEARS
         if (row["Symbol"], yr) not in existing_keys
     ]
-    print(f"  {len(pairs)} (ticker, year) pairs to fetch.\n")
+    print(f"{len(pairs)} pairs to fetch\n")
 
     filings_rows    = []
     targets_rows    = []
     financials_rows = []
     skipped         = 0
 
-    for ticker, year, cik in tqdm(pairs, desc="Fetching test filings"):
+    for ticker, year, cik in tqdm(pairs, desc="Fetching"):
         text, filing_date = fetch_item1a(ticker, year, cik)
         if text is None:
             skipped += 1
@@ -82,10 +71,10 @@ def run():
         financials_rows.append({"ticker": ticker, "year": year, **ratios})
 
     if not filings_rows:
-        print("No new filings fetched. Check EDGAR connectivity.")
+        print("Nothing fetched. Check EDGAR connectivity.")
         return
 
-    # use the existing train-set threshold to avoid label leakage
+    # use existing train-set threshold to avoid label leakage
     threshold = existing_targets["vol_threshold"].iloc[0]
 
     new_targets = pd.DataFrame(targets_rows)
@@ -105,13 +94,12 @@ def run():
     (pd.concat([existing_fin, new_financials], ignore_index=True)
        .to_csv(os.path.join(RAW_DIR, "financials.csv"), index=False))
 
-    print(f"\nDone. Appended {len(new_filings)} test observations ({skipped} skipped).")
-    print(f"  High-volatility rate (test): {new_targets['high_volatility'].mean():.1%}")
-    print(f"  Threshold (from train):      {threshold:.4f}")
+    print(f"\nAppended {len(new_filings)} rows ({skipped} skipped).")
+    print(f"  high-vol rate: {new_targets['high_volatility'].mean():.1%}")
+    print(f"  threshold: {threshold:.4f}")
 
-    # sanity check final counts
     final = pd.read_csv(os.path.join(RAW_DIR, "targets.csv"))
-    print(f"\nFinal dataset: {len(final)} total rows")
+    print(f"\n{len(final)} total rows")
     print(final.groupby("year").size().to_string())
 
 
