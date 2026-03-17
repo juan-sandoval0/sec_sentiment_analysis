@@ -1,5 +1,5 @@
 """
-models.py - ridge, logistic regression, random forest, MLP with manual grid search
+ridge, logistic regression, random forest, MLP with manual grid search
 """
 
 import numpy as np
@@ -109,7 +109,7 @@ def logreg_grid_search(X_train, y_train, X_val, y_val,
 
 # 2 x 3 x 3 = 18 combos
 # depth 3 = max 8 leaves (conservative for n~200), depth 10 probably overfits
-# min_samples_leaf=15 ~ sqrt(216), common rule of thumb
+# min_samples_leaf=15 ~ sqrt(216), good rule of thumb we saw
 RF_GRID = {
     "n_estimators":    [100, 200],
     "max_depth":       [3, 5, 10],

@@ -1,5 +1,5 @@
 """
-evaluate.py - plotting helpers, all figures saved to results/figures/
+plotting helpers, all figures saved to results/figures/
 """
 
 import os

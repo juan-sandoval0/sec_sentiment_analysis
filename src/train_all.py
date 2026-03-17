@@ -1,5 +1,5 @@
 """
-train_all.py - builds features, runs grid search for all models, saves val results
+builds features, runs grid search for all models, saves val results
 """
 
 import os, sys

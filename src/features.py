@@ -1,5 +1,5 @@
 """
-features.py - builds four feature matrices from raw CSVs.
+builds four feature matrices from raw CSVs.
 scalers/vectorizers fit on train only.
 
 feature sets:

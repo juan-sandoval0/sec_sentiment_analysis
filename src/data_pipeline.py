@@ -1,5 +1,5 @@
 """
-data_pipeline.py - scrapes Item 1A from EDGAR 10-Ks, grabs volatility + financial
+scrapes Item 1A from EDGAR 10-Ks, grabs volatility + financial
 ratios from yahoo finance. run this once to build Data/raw/
 """
 

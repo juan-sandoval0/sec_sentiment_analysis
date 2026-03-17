@@ -1,5 +1,5 @@
 """
-run_test_eval.py - evaluate best models on held-out 2020-2023 test set
+evaluate best models on held-out 2020-2023 test set
 """
 
 import os, sys
